@@ -25,6 +25,7 @@ import {
   reportMatch,
   verifyMatch,
   deleteMatch,
+  getAllMatchesBySeason,
   getOpenPartnerSlots,
   getMyPartnerSlots,
   createPartnerSlot,
@@ -402,6 +403,14 @@ export const tournamentRouter = router({
       return { success: true };
     }),
 
+  /** Get all matches for a season (admin only) */
+  adminSeasonMatches: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return getAllMatchesBySeason(input.seasonId);
+    }),
+
   // ════════════════════════════════════════════════════════════════════════════
   // PARTNER FINDER
   // ════════════════════════════════════════════════════════════════════════════
@@ -547,6 +556,22 @@ export const tournamentRouter = router({
     .input(z.object({ seasonId: z.number() }))
     .query(async ({ ctx, input }) => {
       return getMyFixtures(ctx.user.id, input.seasonId);
+    }),
+
+  /**
+   * Get all fixtures for the current user's box in a season.
+   * Returns every fixture in the box, not just the user's own.
+   * The caller uses the returned userId fields to determine edit access.
+   */
+  myBoxFixtures: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
+      if (!entrant) return { boxId: null, boxName: null, fixtures: [] };
+      const box = await getMyBox(entrant.id);
+      if (!box) return { boxId: null, boxName: null, fixtures: [] };
+      const allFixtures = await getFixturesByBox(box.id);
+      return { boxId: box.id, boxName: box.name, fixtures: allFixtures };
     }),
 
   /**

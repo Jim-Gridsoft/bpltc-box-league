@@ -15,30 +15,36 @@ import {
   ClipboardEdit,
   X,
   Trophy,
+  Eye,
 } from "lucide-react";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface FixtureShape {
+  id: number;
+  round: number;
+  status: string;
+  boxId: number;
+  seasonId: number;
+  teamAPlayer1: number;
+  teamAPlayer2: number;
+  teamBPlayer1: number;
+  teamBPlayer2: number;
+  teamAPlayer1Name: string;
+  teamAPlayer2Name: string;
+  teamBPlayer1Name: string;
+  teamBPlayer2Name: string;
+  matchId: number | null;
+}
 
 // ── FixtureCard ───────────────────────────────────────────────────────────────
 interface FixtureCardProps {
-  fixture: {
-    id: number;
-    round: number;
-    status: string;
-    boxId: number;
-    seasonId: number;
-    teamAPlayer1: number;
-    teamAPlayer2: number;
-    teamBPlayer1: number;
-    teamBPlayer2: number;
-    teamAPlayer1Name: string;
-    teamAPlayer2Name: string;
-    teamBPlayer1Name: string;
-    teamBPlayer2Name: string;
-  };
+  fixture: FixtureShape;
   currentUserId: number;
+  canEdit: boolean; // true only when the current user is one of the four players
   onResultSubmitted: () => void;
 }
 
-function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCardProps) {
+function FixtureCard({ fixture: f, currentUserId, canEdit, onResultSubmitted }: FixtureCardProps) {
   const [open, setOpen] = useState(false);
   const [scoreResult, setScoreResult] = useState<ScoreResult>({
     scoreString: "",
@@ -51,25 +57,18 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
 
   const iAmTeamA = f.teamAPlayer1 === currentUserId || f.teamAPlayer2 === currentUserId;
 
+  // Labels for the form — only meaningful when canEdit is true
   const myPartner = iAmTeamA
-    ? f.teamAPlayer1 === currentUserId
-      ? f.teamAPlayer2Name
-      : f.teamAPlayer1Name
-    : f.teamBPlayer1 === currentUserId
-    ? f.teamBPlayer2Name
-    : f.teamBPlayer1Name;
+    ? f.teamAPlayer1 === currentUserId ? f.teamAPlayer2Name : f.teamAPlayer1Name
+    : f.teamBPlayer1 === currentUserId ? f.teamBPlayer2Name : f.teamBPlayer1Name;
 
   const opponents = iAmTeamA
     ? `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name}`
     : `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name}`;
 
   const partnerId = iAmTeamA
-    ? f.teamAPlayer1 === currentUserId
-      ? f.teamAPlayer2
-      : f.teamAPlayer1
-    : f.teamBPlayer1 === currentUserId
-    ? f.teamBPlayer2
-    : f.teamBPlayer1;
+    ? f.teamAPlayer1 === currentUserId ? f.teamAPlayer2 : f.teamAPlayer1
+    : f.teamBPlayer1 === currentUserId ? f.teamBPlayer2 : f.teamBPlayer1;
 
   const opp1Id = iAmTeamA ? f.teamBPlayer1 : f.teamAPlayer1;
   const opp2Id = iAmTeamA ? f.teamBPlayer2 : f.teamAPlayer2;
@@ -81,7 +80,7 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       setOpen(false);
       setScoreResult({ scoreString: "", winner: null, valid: false, message: "" });
       setNotes("");
-      // Invalidate all queries that show points so they refresh immediately
+      utils.tournament.myBoxFixtures.invalidate();
       utils.tournament.myFixtures.invalidate();
       utils.tournament.myMatches.invalidate();
       utils.tournament.myEntry.invalidate();
@@ -99,15 +98,9 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       toast.error(scoreResult.message || "Please enter a valid score.");
       return;
     }
-
-    // scoreResult.winner is from "my team" perspective ("A" = I won).
-    // The procedure expects winner relative to the fixture's Team A.
-    // If I am Team B, flip the winner.
     const fixtureWinner: "A" | "B" = iAmTeamA
       ? scoreResult.winner
-      : scoreResult.winner === "A"
-      ? "B"
-      : "A";
+      : scoreResult.winner === "A" ? "B" : "A";
 
     reportMutation.mutate({
       seasonId: f.seasonId,
@@ -130,21 +123,38 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
   };
 
   return (
-    <div className="bg-gray-50 rounded-xl overflow-hidden mb-3 last:mb-0 border border-gray-100">
+    <div className={`rounded-xl overflow-hidden mb-3 last:mb-0 border ${
+      canEdit ? "bg-gray-50 border-gray-100" : "bg-white border-gray-100 opacity-80"
+    }`}>
       {/* Summary row */}
       <div className="flex items-start justify-between gap-4 p-4">
         <div className="space-y-1 min-w-0">
+          {/* Team A */}
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-[#1b4332] flex-shrink-0" />
             <span className="text-sm font-medium text-gray-800 truncate">
-              Partner: <strong>{myPartner}</strong>
+              {f.teamAPlayer1Name} &amp; {f.teamAPlayer2Name}
             </span>
+            {(f.teamAPlayer1 === currentUserId || f.teamAPlayer2 === currentUserId) && (
+              <span className="text-xs bg-[#1b4332] text-white px-1.5 py-0.5 rounded font-medium flex-shrink-0">you</span>
+            )}
           </div>
+          {/* vs */}
+          <div className="flex items-center gap-2 pl-6">
+            <span className="text-xs text-gray-400 font-medium">vs</span>
+          </div>
+          {/* Team B */}
           <div className="flex items-center gap-2">
             <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-600 truncate">vs {opponents}</span>
+            <span className="text-sm text-gray-700 truncate">
+              {f.teamBPlayer1Name} &amp; {f.teamBPlayer2Name}
+            </span>
+            {(f.teamBPlayer1 === currentUserId || f.teamBPlayer2 === currentUserId) && (
+              <span className="text-xs bg-[#1b4332] text-white px-1.5 py-0.5 rounded font-medium flex-shrink-0">you</span>
+            )}
           </div>
         </div>
+
         <div className="flex items-center gap-2 flex-shrink-0">
           <span
             className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${
@@ -157,27 +167,30 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
           >
             {f.status}
           </span>
-          {f.status === "scheduled" && (
+
+          {f.status === "scheduled" && canEdit && (
             <button
               onClick={() => setOpen((v) => !v)}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#1b4332] text-white px-3 py-1.5 rounded-lg hover:bg-[#2d6a4f] transition-colors"
             >
               {open ? (
-                <>
-                  <X className="w-3.5 h-3.5" /> Cancel
-                </>
+                <><X className="w-3.5 h-3.5" /> Cancel</>
               ) : (
-                <>
-                  <ClipboardEdit className="w-3.5 h-3.5" /> Record Result
-                </>
+                <><ClipboardEdit className="w-3.5 h-3.5" /> Record Result</>
               )}
             </button>
+          )}
+
+          {f.status === "scheduled" && !canEdit && (
+            <span className="flex items-center gap-1 text-xs text-gray-400">
+              <Eye className="w-3.5 h-3.5" /> View only
+            </span>
           )}
         </div>
       </div>
 
-      {/* Inline result form */}
-      {open && f.status === "scheduled" && (
+      {/* Inline result form — only shown when canEdit */}
+      {open && canEdit && f.status === "scheduled" && (
         <div className="border-t border-gray-200 bg-white px-5 py-5 space-y-5">
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
@@ -188,10 +201,8 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
             </p>
           </div>
 
-          {/* Set score entry */}
           <SetScoreEntry onChange={setScoreResult} />
 
-          {/* Auto-detected winner feedback */}
           {scoreResult.valid && scoreResult.winner && (
             <div
               className={`text-sm font-semibold px-3 py-2 rounded-lg ${
@@ -205,7 +216,6 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
             </div>
           )}
 
-          {/* Date and notes */}
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Date Played</label>
@@ -238,10 +248,7 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
               {reportMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               Submit Result
             </button>
-            <button
-              onClick={handleClose}
-              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-            >
+            <button onClick={handleClose} className="text-sm text-gray-500 hover:text-gray-700 transition-colors">
               Cancel
             </button>
           </div>
@@ -269,7 +276,8 @@ export default function Results() {
     { enabled: !!activeSeason && isAuthenticated }
   );
 
-  const { data: myFixtures, refetch: refetchFixtures } = trpc.tournament.myFixtures.useQuery(
+  // Box-wide fixtures — all fixtures in the user's box
+  const { data: boxData, refetch: refetchBoxFixtures } = trpc.tournament.myBoxFixtures.useQuery(
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!myEntry?.paid }
   );
@@ -292,16 +300,11 @@ export default function Results() {
         <TournamentNav />
         <div className="max-w-md mx-auto px-4 py-24 text-center">
           <ClipboardList className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
-          <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">
-            Sign In to Record Results
-          </h1>
+          <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Sign In to Record Results</h1>
           <p className="text-gray-600 mb-8">
             You need to be signed in and registered for the current season to record match results.
           </p>
-          <a
-            href={getLoginUrl()}
-            className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors"
-          >
+          <a href={getLoginUrl()} className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors">
             Sign In
           </a>
         </div>
@@ -315,13 +318,8 @@ export default function Results() {
         <div className="max-w-md mx-auto px-4 py-24 text-center">
           <Trophy className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
           <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Payment Required</h1>
-          <p className="text-gray-600 mb-8">
-            Please complete your £20 entry payment to access match result entry.
-          </p>
-          <a
-            href="/dashboard"
-            className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors"
-          >
+          <p className="text-gray-600 mb-8">Please complete your £20 entry payment to access match result entry.</p>
+          <a href="/dashboard" className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors">
             Go to Dashboard to Pay
           </a>
         </div>
@@ -336,23 +334,32 @@ export default function Results() {
           <ClipboardList className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
           <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Not Registered</h1>
           <p className="text-gray-600 mb-8">
-            You are not registered for the current season. Register via your Dashboard to enter the
-            box league and record match results.
+            You are not registered for the current season. Register via your Dashboard to enter the box league and record match results.
           </p>
-          <a
-            href="/dashboard"
-            className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors"
-          >
+          <a href="/dashboard" className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors">
             Go to Dashboard
           </a>
         </div>
       </div>
     );
 
-  const upcomingCount = myFixtures?.filter((f) => f.status === "scheduled").length ?? 0;
-  const rounds = myFixtures
-    ? Array.from(new Set(myFixtures.map((f) => f.round))).sort((a, b) => a - b)
-    : [];
+  const allFixtures = boxData?.fixtures ?? [];
+  const boxName = boxData?.boxName;
+  const rounds = Array.from(new Set(allFixtures.map((f) => f.round))).sort((a, b) => a - b);
+  const pendingCount = allFixtures.filter((f) => f.status === "scheduled").length;
+
+  // Fixtures the current user can edit (they are one of the four players)
+  const myFixtureIds = new Set(
+    allFixtures
+      .filter(
+        (f) =>
+          f.teamAPlayer1 === user!.id ||
+          f.teamAPlayer2 === user!.id ||
+          f.teamBPlayer1 === user!.id ||
+          f.teamBPlayer2 === user!.id
+      )
+      .map((f) => f.id)
+  );
 
   return (
     <div className="min-h-screen bg-[#faf6ee]">
@@ -363,9 +370,11 @@ export default function Results() {
           <p className="text-green-300 text-sm mb-1">
             {activeSeason?.name ?? "BPLTC Men's Doubles Box League"}
           </p>
-          <h1 className="font-serif text-3xl font-bold">My Match Results</h1>
+          <h1 className="font-serif text-3xl font-bold">
+            {boxName ? `${boxName} — Fixtures & Results` : "Box Fixtures & Results"}
+          </h1>
           <p className="text-green-200 mt-1 text-sm">
-            Record results only for matches you have played in
+            All fixtures in your box are shown. You can only record results for matches you are involved in.
           </p>
         </div>
       </div>
@@ -389,28 +398,31 @@ export default function Results() {
           </div>
         )}
 
-        {/* Fixture schedule with inline result entry */}
+        {/* Box fixture schedule */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
             <Calendar className="w-5 h-5 text-[#c9a84c]" />
-            <h2 className="font-serif text-xl font-bold text-[#1b4332]">My Fixtures</h2>
-            {upcomingCount > 0 && (
+            <h2 className="font-serif text-xl font-bold text-[#1b4332]">
+              {boxName ? `${boxName} Schedule` : "Box Schedule"}
+            </h2>
+            {pendingCount > 0 && (
               <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-medium">
-                {upcomingCount} to play
+                {pendingCount} to play
               </span>
             )}
           </div>
 
-          {!myFixtures ? (
+          {!boxData ? (
             <div className="p-8 text-center">
               <Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" />
             </div>
-          ) : myFixtures.length === 0 ? (
+          ) : allFixtures.length === 0 ? (
             <div className="p-8 text-center">
               <Calendar className="w-10 h-10 mx-auto mb-3 text-gray-300" />
               <p className="text-gray-500 text-sm">
-                Your fixture schedule has not been generated yet. Check back once the admin has
-                created boxes and generated fixtures for this season.
+                {boxData.boxId
+                  ? "No fixtures have been generated for your box yet. Check back once the admin has generated fixtures for this season."
+                  : "You have not been assigned to a box yet. Check back once the admin has created boxes for this season."}
               </p>
             </div>
           ) : (
@@ -420,14 +432,15 @@ export default function Results() {
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
                     Round {round}
                   </p>
-                  {myFixtures
+                  {allFixtures
                     .filter((f) => f.round === round)
                     .map((f) => (
                       <FixtureCard
                         key={f.id}
                         fixture={f}
-                        currentUserId={user?.id ?? 0}
-                        onResultSubmitted={() => refetchFixtures()}
+                        currentUserId={user!.id}
+                        canEdit={myFixtureIds.has(f.id)}
+                        onResultSubmitted={() => refetchBoxFixtures()}
                       />
                     ))}
                 </div>
@@ -436,7 +449,7 @@ export default function Results() {
           )}
         </div>
 
-        {/* Match history */}
+        {/* My match history */}
         {myMatches && myMatches.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
@@ -455,11 +468,7 @@ export default function Results() {
                 return (
                   <div key={m.id} className="px-6 py-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          iWon ? "bg-green-500" : "bg-red-400"
-                        }`}
-                      />
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${iWon ? "bg-green-500" : "bg-red-400"}`} />
                       <div>
                         <p className="text-sm font-medium text-gray-800">{m.score}</p>
                         <p className="text-xs text-gray-400">
@@ -468,11 +477,7 @@ export default function Results() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                          iWon ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-                        }`}
-                      >
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${iWon ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
                         {iWon ? "Won · +2 pts" : "Lost · +1 pt"}
                       </span>
                       {m.verified && <CheckCircle2 className="w-4 h-4 text-green-500" />}

@@ -371,6 +371,43 @@ export async function getMatchesByUser(userId: number, seasonId?: number) {
   );
 }
 
+/**
+ * Get all matches for a season with player names resolved.
+ * Used by the admin matches management table.
+ */
+export async function getAllMatchesBySeason(seasonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(matches)
+    .where(eq(matches.seasonId, seasonId))
+    .orderBy(desc(matches.playedAt));
+
+  if (rows.length === 0) return [];
+
+  const allUserIds = new Set<number>();
+  for (const m of rows) {
+    allUserIds.add(m.player1Id);
+    allUserIds.add(m.partner1Id);
+    allUserIds.add(m.player2Id);
+    allUserIds.add(m.partner2Id);
+  }
+  const userRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, Array.from(allUserIds)));
+  const nameMap = new Map(userRows.map((u) => [u.id, u.name ?? "Unknown"]));
+
+  return rows.map((m) => ({
+    ...m,
+    player1Name: nameMap.get(m.player1Id) ?? "Unknown",
+    partner1Name: nameMap.get(m.partner1Id) ?? "Unknown",
+    player2Name: nameMap.get(m.player2Id) ?? "Unknown",
+    partner2Name: nameMap.get(m.partner2Id) ?? "Unknown",
+  }));
+}
+
 export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

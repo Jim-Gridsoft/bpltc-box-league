@@ -120,3 +120,30 @@
 - [x] Admin UI: Delete button on each season card with confirmation dialog
 - [x] Admin UI: Prevent deletion of the active season (button disabled + warning shown)
 - [x] Tests: cover adminDeleteSeason procedure (28/28 pass)
+
+## Round 12 — Box-Wide Fixture View on Results Page
+
+- [ ] Backend: myBoxFixtures query — returns all fixtures for the user's box with player names
+- [ ] Results page: show all fixtures in the user's box grouped by round
+- [ ] Results page: Record Result button only on fixtures the logged-in user is a player in
+- [ ] Results page: view-only display for other pairs' fixtures in the same box
+- [ ] Tests: cover myBoxFixtures procedure
+
+## Round 13 — Admin Match Management
+
+- [ ] Admin UI: Matches tab shows all submitted results for the active season
+- [ ] Admin UI: Each match row has a Delete button with inline confirmation
+- [ ] Backend: adminDeleteMatch procedure (admin-only, reverses points)
+- [ ] Tests: cover adminDeleteMatch procedure
+
+## Round 14 — Season Status Change in Admin
+
+- [ ] Admin UI: Season cards have a status dropdown to change status inline
+- [ ] Admin UI: Confirm dialog before changing to/from active
+- [ ] Tests: cover adminUpdateSeasonStatus (already exists, verify)
+
+## Round 15 — Admin Access Restriction
+
+- [x] TournamentNav: hide Admin link for non-admin users (check user.role === 'admin')
+- [x] Admin page: redirect non-admin users to home with an error message
+- [x] Tests: verify admin-only guard
