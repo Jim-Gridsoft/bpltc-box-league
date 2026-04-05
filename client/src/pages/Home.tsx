@@ -59,7 +59,7 @@ const HOW_IT_WORKS = [
   {
     icon: BarChart3,
     title: "Report Results & Earn Points",
-    body: "Log match results in your dashboard. Win a match and earn 2 points; lose but play and earn 1 point. Every game counts — effort is always rewarded.",
+    body: "Log match results in your dashboard. Win a match and earn 2 points; win at least one set but lose the match and earn 1 point; lose both sets and earn 0 points. Every set counts.",
   },
   {
     icon: ArrowUpDown,
@@ -86,7 +86,7 @@ const RULES = [
   "Players are seeded into ability-matched boxes of 6–8 players by the committee at the start of each season.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
   "Partners rotate each match — you may not partner the same player more than once per season.",
-  "Points are awarded as follows: 2 points for a match won, 1 point for a match played and lost, 0 points for a match not played.",
+  "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
   "Box standings are determined by points, then by matches won, then by sets won.",
   "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
   "Year-long points accumulate across all four seasons and determine the overall annual champion.",
@@ -212,12 +212,13 @@ export default function Home() {
         className="py-6 border-y"
         style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.1)" }}
       >
-        <div className="container grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+        <div className="container grid grid-cols-2 md:grid-cols-5 gap-6 text-center">
           {[
             { value: "4", label: "Seasons Per Year" },
             { value: "£20", label: "Entry Per Season" },
             { value: "2 pts", label: "For a Win" },
-            { value: "1 pt", label: "For Playing & Losing" },
+            { value: "1 pt", label: "For Winning a Set" },
+            { value: "0 pts", label: "For Losing 2-0" },
           ].map(({ value, label }) => (
             <div key={label}>
               <p

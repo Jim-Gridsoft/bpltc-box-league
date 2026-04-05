@@ -414,10 +414,29 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
 
   await db.insert(matches).values(data);
 
-  // Award points: 2 for win, 1 for loss
+  // Award points: 2 for win, 1 for winning at least one set but losing, 0 for losing 2-0
   // Team A: player1 + partner1, Team B: player2 + partner2
   const teamAWon = data.winner === "A";
   const year = data.playedAt.getFullYear();
+
+  // Parse the score string (e.g. "6-3 4-6 6-5") to count sets won by each team
+  function countSetsWon(score: string | null): { teamA: number; teamB: number } {
+    if (!score) return { teamA: 0, teamB: 0 };
+    let a = 0, b = 0;
+    for (const set of score.trim().split(/\s+/)) {
+      const parts = set.split("-");
+      if (parts.length !== 2) continue;
+      const ga = parseInt(parts[0], 10);
+      const gb = parseInt(parts[1], 10);
+      if (isNaN(ga) || isNaN(gb)) continue;
+      if (ga > gb) a++; else if (gb > ga) b++;
+    }
+    return { teamA: a, teamB: b };
+  }
+  const setsWon = countSetsWon(data.score ?? null);
+  // Points for each team: 2=match win, 1=won ≥1 set but lost match, 0=lost 2-0
+  const teamAPts = teamAWon ? 2 : (setsWon.teamA > 0 ? 1 : 0);
+  const teamBPts = !teamAWon ? 2 : (setsWon.teamB > 0 ? 1 : 0);
 
   const teamA = [data.player1Id, data.partner1Id];
   const teamB = [data.player2Id, data.partner2Id];
@@ -429,7 +448,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
       .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
       .limit(1);
     if (entrant[0]) {
-      const pts = teamAWon ? 2 : 1;
+      const pts = teamAPts;
       await db
         .update(seasonEntrants)
         .set({
@@ -449,7 +468,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
       .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
       .limit(1);
     if (entrant[0]) {
-      const pts = teamAWon ? 1 : 2;
+      const pts = teamBPts;
       await db
         .update(seasonEntrants)
         .set({
@@ -458,7 +477,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesWon: entrant[0].matchesWon + (teamAWon ? 0 : 1),
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon);
+      await upsertYearPoints(userId, year, pts, !teamAWon); // teamB won if !teamAWon
     }
   }
 
@@ -520,8 +539,27 @@ export async function deleteMatch(matchId: number) {
     for (const um of userMatches) {
       const onTeamA = um.player1Id === userId || um.partner1Id === userId;
       const userWon = (onTeamA && um.winner === "A") || (!onTeamA && um.winner === "B");
-      pts += userWon ? 2 : 1;
-      if (userWon) won++;
+      if (userWon) {
+        pts += 2;
+        won++;
+      } else {
+        // Count sets won by this user's team from the score string
+        let setsWonByUser = 0;
+        if (um.score) {
+          for (const set of um.score.trim().split(/\s+/)) {
+            const parts = set.split("-");
+            if (parts.length !== 2) continue;
+            const g0 = parseInt(parts[0], 10);
+            const g1 = parseInt(parts[1], 10);
+            if (isNaN(g0) || isNaN(g1)) continue;
+            // If onTeamA, team A score is parts[0]; else parts[1]
+            const userGames = onTeamA ? g0 : g1;
+            const oppGames = onTeamA ? g1 : g0;
+            if (userGames > oppGames) setsWonByUser++;
+          }
+        }
+        pts += setsWonByUser > 0 ? 1 : 0;
+      }
     }
 
     await db

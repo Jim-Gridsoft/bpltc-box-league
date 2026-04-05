@@ -460,10 +460,25 @@ export default function Results() {
             </div>
             <div className="divide-y divide-gray-50">
               {myMatches.map((m) => {
-                const iWon =
-                  m.player1Id === myEntry.id || m.partner1Id === myEntry.id
-                    ? m.winner === "A"
-                    : m.winner === "B";
+                const onTeamA = m.player1Id === myEntry.id || m.partner1Id === myEntry.id;
+                const iWon = onTeamA ? m.winner === "A" : m.winner === "B";
+                // Count sets won by this user's team for the 2/1/0 points badge
+                const setsWonByMe = (() => {
+                  if (!m.score) return 0;
+                  let s = 0;
+                  for (const set of m.score.trim().split(/\s+/)) {
+                    const p = set.split("-");
+                    if (p.length !== 2) continue;
+                    const ga = parseInt(p[0], 10), gb = parseInt(p[1], 10);
+                    if (isNaN(ga) || isNaN(gb)) continue;
+                    const myGames = onTeamA ? ga : gb;
+                    const oppGames = onTeamA ? gb : ga;
+                    if (myGames > oppGames) s++;
+                  }
+                  return s;
+                })();
+                const ptsLabel = iWon ? "Won · +2 pts" : setsWonByMe > 0 ? "Lost · +1 pt" : "Lost · 0 pts";
+                const ptsBg = iWon ? "bg-green-100 text-green-700" : setsWonByMe > 0 ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500";
                 return (
                   <div key={m.id} className="px-6 py-4 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -476,8 +491,8 @@ export default function Results() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${iWon ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
-                        {iWon ? "Won · +2 pts" : "Lost · +1 pt"}
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ptsBg}`}>
+                        {ptsLabel}
                       </span>
                       {m.verified && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                     </div>

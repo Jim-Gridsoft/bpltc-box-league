@@ -141,7 +141,7 @@ export default function Leaderboard() {
                 </tbody>
               </table>
             )}
-            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">Points: 2 for a win · 1 for a loss · 0 for a walkover</div>
+            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">Points: 2 for a win · 1 for winning a set but losing the match · 0 for losing 2-0</div>
           </div>
         )}
 
@@ -204,10 +204,10 @@ export default function Leaderboard() {
           <h3 className="font-serif text-xl font-bold mb-4 text-[#c9a84c]">How Points Work</h3>
           <div className="grid sm:grid-cols-3 gap-4 text-sm">
             <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">2</div><div className="text-green-200">Points for a win</div></div>
-            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">1</div><div className="text-green-200">Point for a loss</div></div>
-            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">0</div><div className="text-green-200">Walkover / no-show</div></div>
+            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">1</div><div className="text-green-200">Won a set but lost the match</div></div>
+            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">0</div><div className="text-green-200">Lost both sets (2-0)</div></div>
           </div>
-          <p className="text-green-200 text-sm mt-4">Partners rotate each match — you cannot play with the same partner twice in a season. Every player earns points for competing, not just the winners.</p>
+          <p className="text-green-200 text-sm mt-4">Partners rotate each match — you cannot play with the same partner twice in a season. Win a set and you earn a point even in defeat.</p>
         </div>
       </div>
     </div>

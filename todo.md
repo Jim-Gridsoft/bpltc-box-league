@@ -191,3 +191,12 @@
 - [x] Dashboard: Show outcome badge on user's box standings table (promoted/stayed/relegated) after season ends
 - [x] Dashboard: Show outcome badge with explanation (promoted/stayed/relegated) in My Box standings
 - [x] Tests: cover endSeason procedure (28/28 pass)
+
+## Round 21 — Points System Update
+
+- [x] Backend: update reportMatch points logic (2=win, 1=won a set but lost, 0=lost 2-0)
+- [x] Backend: update deleteMatch points reversal to match new logic
+- [x] Home page: update stats bar and rules section with new scoring
+- [x] Leaderboard/Standings page: update points description
+- [x] Dashboard: update any points explanation text
+- [x] Tests: cover new points calculation (11 new tests, 39 total passing)
