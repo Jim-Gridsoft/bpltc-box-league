@@ -179,3 +179,15 @@
 - [x] Audit fixture player ordering: confirmed backend ignores fixture team assignment, always uses submitter as Team A
 - [x] Fix mismatch: removed winner flip in both Results.tsx and Dashboard.tsx
 - [x] Tests: 28/28 pass after fix
+
+## Round 20 — Promotion & Relegation
+
+- [x] Backend: endSeason DB function — rank players in each box by seasonPoints, set outcome (promoted/stayed/relegated), update abilityRating for next season seeding
+- [x] Backend: adminEndSeason tRPC procedure (admin-only, marks season completed + runs outcomes)
+- [x] Backend: promotion rules — top player in each box promoted (abilityRating +1), bottom player relegated (abilityRating -1), middle players stay
+- [x] Backend: handle edge cases — top box (no promotion), bottom box (no relegation), ties handled by matchesWon then matchesPlayed
+- [x] Admin UI: "End Season" button on each active season card with outcome preview table after confirming
+- [x] Admin UI: Show outcome badges (promoted/stayed/relegated) in the Entrants tab per player
+- [x] Dashboard: Show outcome badge on user's box standings table (promoted/stayed/relegated) after season ends
+- [x] Dashboard: Show outcome badge with explanation (promoted/stayed/relegated) in My Box standings
+- [x] Tests: cover endSeason procedure (28/28 pass)

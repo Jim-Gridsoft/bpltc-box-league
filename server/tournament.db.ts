@@ -1,4 +1,4 @@
-import { eq, desc, and, asc, like, or } from "drizzle-orm";
+import { eq, desc, and, asc, like, or, ne } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
@@ -1103,4 +1103,143 @@ export async function getMyFixtures(userId: number, seasonId: number) {
     teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
     teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
   }));
+}
+
+/**
+ * End a season: rank players in each box by seasonPoints (tiebreak: matchesWon, then matchesPlayed),
+ * assign outcomes (promoted/stayed/relegated), update abilityRating for next-season seeding,
+ * and mark the season as completed.
+ *
+ * Promotion rules:
+ *   - Top player in each box is promoted (abilityRating +1), EXCEPT in Box A (level 1, already top)
+ *   - Bottom player in each box is relegated (abilityRating -1), EXCEPT in the lowest box
+ *   - All others stay
+ *   - abilityRating is clamped to 1–10
+ *
+ * Returns a summary of outcomes per box.
+ */
+export async function endSeason(seasonId: number): Promise<{
+  boxId: number;
+  boxName: string;
+  level: number;
+  outcomes: { entrantId: number; userId: number; displayName: string; rank: number; points: number; outcome: "promoted" | "stayed" | "relegated"; newAbilityRating: number }[];
+}[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all boxes for the season ordered by level (1 = top box)
+  const seasonBoxes = await db
+    .select()
+    .from(boxes)
+    .where(eq(boxes.seasonId, seasonId))
+    .orderBy(boxes.level);
+
+  if (seasonBoxes.length === 0) throw new Error("No boxes found for this season.");
+
+  const totalBoxes = seasonBoxes.length;
+  const summary: {
+    boxId: number;
+    boxName: string;
+    level: number;
+    outcomes: { entrantId: number; userId: number; displayName: string; rank: number; points: number; outcome: "promoted" | "stayed" | "relegated"; newAbilityRating: number }[];
+  }[] = [];
+
+  for (const box of seasonBoxes) {
+    // Get all members of this box with their season stats
+    const members = await db
+      .select({
+        boxMemberId: boxMembers.id,
+        seasonEntrantId: boxMembers.seasonEntrantId,
+        userId: seasonEntrants.userId,
+        displayName: seasonEntrants.displayName,
+        seasonPoints: seasonEntrants.seasonPoints,
+        matchesWon: seasonEntrants.matchesWon,
+        matchesPlayed: seasonEntrants.matchesPlayed,
+        abilityRating: seasonEntrants.abilityRating,
+      })
+      .from(boxMembers)
+      .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
+      .where(eq(boxMembers.boxId, box.id));
+
+    // Sort by: seasonPoints desc, matchesWon desc, matchesPlayed asc (more played = tiebreak favour)
+    const ranked = members
+      .filter((m) => m.userId !== null)
+      .sort((a, b) => {
+        const aPts = a.seasonPoints ?? 0;
+        const bPts = b.seasonPoints ?? 0;
+        const aWon = a.matchesWon ?? 0;
+        const bWon = b.matchesWon ?? 0;
+        const aPlayed = a.matchesPlayed ?? 0;
+        const bPlayed = b.matchesPlayed ?? 0;
+        if (bPts !== aPts) return bPts - aPts;
+        if (bWon !== aWon) return bWon - aWon;
+        return aPlayed - bPlayed;
+      });
+
+    const boxOutcomes: typeof summary[0]["outcomes"] = [];
+
+    for (let i = 0; i < ranked.length; i++) {
+      const m = ranked[i];
+      const rank = i + 1;
+      const isTop = rank === 1;
+      const isBottom = rank === ranked.length;
+
+      let outcome: "promoted" | "stayed" | "relegated";
+      if (isTop && box.level > 1) {
+        outcome = "promoted"; // Top player moves up (not applicable in Box A)
+      } else if (isBottom && box.level < totalBoxes) {
+        outcome = "relegated"; // Bottom player moves down (not applicable in lowest box)
+      } else {
+        outcome = "stayed";
+      }
+
+      // Update abilityRating: promoted +1, relegated -1, stayed unchanged, clamped 1–10
+      const currentRating = m.abilityRating ?? 3;
+      const ratingDelta = outcome === "promoted" ? 1 : outcome === "relegated" ? -1 : 0;
+      const newAbilityRating = Math.max(1, Math.min(10, currentRating + ratingDelta));
+
+      // Persist outcome on box_members
+      await db
+        .update(boxMembers)
+        .set({ outcome })
+        .where(eq(boxMembers.id, m.boxMemberId));
+
+      // Update abilityRating on season_entrants (so next season's seeding uses it)
+      await db
+        .update(seasonEntrants)
+        .set({ abilityRating: newAbilityRating })
+        .where(eq(seasonEntrants.id, m.seasonEntrantId));
+
+      // Also update abilityRating on the user's NEXT season entrant record if one exists,
+      // so the rating carries forward automatically when they register for the next season.
+      // We do this by updating the user's most recent season_entrant for any future season.
+      const futureEntrants = await db
+        .select()
+        .from(seasonEntrants)
+        .where(and(eq(seasonEntrants.userId, m.userId!), ne(seasonEntrants.seasonId, seasonId)));
+      for (const fe of futureEntrants) {
+        await db
+          .update(seasonEntrants)
+          .set({ abilityRating: newAbilityRating })
+          .where(eq(seasonEntrants.id, fe.id));
+      }
+
+      boxOutcomes.push({
+        entrantId: m.seasonEntrantId,
+        userId: m.userId!,
+        displayName: m.displayName ?? "Unknown",
+        rank,
+        points: m.seasonPoints ?? 0,
+        outcome,
+        newAbilityRating,
+      });
+    }
+
+    summary.push({ boxId: box.id, boxName: box.name, level: box.level, outcomes: boxOutcomes });
+  }
+
+  // Mark the season as completed
+  await db.update(seasons).set({ status: "completed" }).where(eq(seasons.id, seasonId));
+
+  return summary;
 }

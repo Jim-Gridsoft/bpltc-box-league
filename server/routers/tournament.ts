@@ -42,6 +42,7 @@ import {
   getFixturesByBox,
   getMyFixtures,
   deleteSeason,
+  endSeason,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -324,6 +325,20 @@ export const tournamentRouter = router({
       }
       await deleteSeason(input.seasonId);
       return { success: true };
+    }),
+
+  /** End a season: calculate outcomes (promoted/stayed/relegated) and update ability ratings */
+  adminEndSeason: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const season = await getSeasonById(input.seasonId);
+      if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
+      if (season.status === "completed") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Season is already completed." });
+      }
+      const summary = await endSeason(input.seasonId);
+      return { success: true, summary };
     }),
 
   /** Get all entrants for a season (admin) */

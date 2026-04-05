@@ -522,6 +522,15 @@ export default function Dashboard() {
                               You
                             </span>
                           )}
+                          {m.outcome && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              m.outcome === "promoted" ? "bg-green-100 text-green-700" :
+                              m.outcome === "relegated" ? "bg-red-100 text-red-700" :
+                              "bg-gray-100 text-gray-500"
+                            }`}>
+                              {m.outcome === "promoted" ? "⬆ Promoted" : m.outcome === "relegated" ? "⬇ Relegated" : "= Stayed"}
+                            </span>
+                          )}
                         </div>
                         <div className="text-right">
                           <span className="font-bold text-[#1b4332]">{m.seasonPoints} pts</span>

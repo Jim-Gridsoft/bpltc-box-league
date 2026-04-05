@@ -83,6 +83,20 @@ export default function Admin() {
   });
 
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState<number | null>(null);
+  const [confirmEndSeasonId, setConfirmEndSeasonId] = useState<number | null>(null);
+  const [endSeasonResult, setEndSeasonResult] = useState<{ seasonId: number; summary: { boxId: number; boxName: string; level: number; outcomes: { entrantId: number; userId: number; displayName: string; rank: number; points: number; outcome: "promoted" | "stayed" | "relegated"; newAbilityRating: number }[] }[] } | null>(null);
+  const endSeasonMutation = trpc.tournament.adminEndSeason.useMutation({
+    onSuccess: (data, variables) => {
+      setEndSeasonResult({ seasonId: variables.seasonId, summary: data.summary });
+      setConfirmEndSeasonId(null);
+      utils.tournament.seasons.invalidate();
+      utils.tournament.currentSeason.invalidate();
+      utils.tournament.seasonLeaderboard.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+      toast.success("Season ended. Outcomes calculated and ability ratings updated.");
+    },
+    onError: (e: { message: string }) => { toast.error(e.message); setConfirmEndSeasonId(null); },
+  });
   const deleteSeasonMutation = trpc.tournament.adminDeleteSeason.useMutation({
     onSuccess: () => {
       toast.success("Season and all associated data deleted.");
@@ -470,6 +484,15 @@ export default function Admin() {
                               <option key={st} value={st}>{st}</option>
                             ))}
                           </select>
+                          {s.status !== "completed" && confirmEndSeasonId !== s.id && confirmDeleteSeasonId !== s.id && (
+                            <button
+                              onClick={() => setConfirmEndSeasonId(s.id)}
+                              title="End season & calculate outcomes"
+                              className="text-amber-600 hover:text-amber-800 transition-colors px-2 py-1 rounded text-xs font-semibold border border-amber-300 hover:border-amber-500 bg-amber-50"
+                            >
+                              End Season
+                            </button>
+                          )}
                           {confirmDeleteSeasonId === s.id ? null : (
                             <button
                               onClick={() => setConfirmDeleteSeasonId(s.id)}
@@ -481,6 +504,75 @@ export default function Admin() {
                           )}
                         </div>
                       </div>
+                      {/* Inline end season confirmation */}
+                      {confirmEndSeasonId === s.id && (
+                        <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                          <p className="text-sm font-semibold text-amber-800 mb-1">End "{s.name}"?</p>
+                          <p className="text-xs text-amber-700 mb-3">
+                            This will calculate final standings for each box, assign promotion/relegation outcomes, and update ability ratings for next season seeding. The season status will be set to Completed. This action cannot be undone.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => endSeasonMutation.mutate({ seasonId: s.id })}
+                              disabled={endSeasonMutation.isPending}
+                              className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {endSeasonMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              Yes, end season
+                            </button>
+                            <button
+                              onClick={() => setConfirmEndSeasonId(null)}
+                              className="text-sm text-gray-500 hover:text-gray-700 transition-colors px-3 py-1.5"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {/* End season outcome results */}
+                      {endSeasonResult?.seasonId === s.id && (
+                        <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-sm font-semibold text-green-800">Season Ended — Final Outcomes</p>
+                            <button onClick={() => setEndSeasonResult(null)} className="text-xs text-gray-400 hover:text-gray-600">Dismiss</button>
+                          </div>
+                          {endSeasonResult.summary.map((box) => (
+                            <div key={box.boxId} className="mb-4">
+                              <p className="text-xs font-bold text-green-700 mb-2">{box.boxName}</p>
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-left text-gray-500">
+                                    <th className="pb-1 pr-3">Rank</th>
+                                    <th className="pb-1 pr-3">Player</th>
+                                    <th className="pb-1 pr-3">Pts</th>
+                                    <th className="pb-1 pr-3">Outcome</th>
+                                    <th className="pb-1">New Rating</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {box.outcomes.map((o) => (
+                                    <tr key={o.entrantId} className="border-t border-green-100">
+                                      <td className="py-1 pr-3 font-semibold">{o.rank}</td>
+                                      <td className="py-1 pr-3">{o.displayName}</td>
+                                      <td className="py-1 pr-3">{o.points}</td>
+                                      <td className="py-1 pr-3">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                                          o.outcome === "promoted" ? "bg-green-100 text-green-700" :
+                                          o.outcome === "relegated" ? "bg-red-100 text-red-700" :
+                                          "bg-gray-100 text-gray-600"
+                                        }`}>
+                                          {o.outcome === "promoted" ? "⬆ Promoted" : o.outcome === "relegated" ? "⬇ Relegated" : "= Stayed"}
+                                        </span>
+                                      </td>
+                                      <td className="py-1">{o.newAbilityRating}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {/* Inline delete confirmation */}
                       {confirmDeleteSeasonId === s.id && (
                         <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4">
