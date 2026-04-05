@@ -104,11 +104,9 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       toast.error(scoreResult.message || "Please enter a valid score.");
       return;
     }
-    // scoreResult.winner is from Team A's perspective (my team = A)
-    // If I'm actually Team B in the fixture, flip the winner
-    const fixtureWinner: "A" | "B" = iAmTeamA
-      ? scoreResult.winner
-      : scoreResult.winner === "A" ? "B" : "A";
+    // The backend always stores the submitting user as player1Id (Team A).
+    // SetScoreEntry uses "A" = "my team won", which directly matches the backend's
+    // Team A perspective — no flip needed regardless of fixture team assignment.
     reportMutation.mutate({
       seasonId: f.seasonId,
       boxId: f.boxId,
@@ -116,7 +114,7 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       player2Id: opp1Id,
       partner2Id: opp2Id,
       score: scoreResult.scoreString,
-      winner: fixtureWinner,
+      winner: scoreResult.winner,
       playedAt: new Date(form.playedAt),
       notes: form.notes || undefined,
       fixtureId: f.id,

@@ -170,3 +170,12 @@
 - [x] Admin: Matches tab — list all season match results with delete button (auto-reverses points)
 - [x] Admin: Season status dropdown — inline status change on each season card (upcoming/registration/active/completed)
 - [x] Tests: verify new admin procedures (28/28 pass)
+
+## Round 19 — Points Calculation Bug Fix
+
+- [x] Audit SetScoreEntry component: verify winner determination logic (which team wins each set)
+- [x] Audit Results.tsx: fix incorrect winner flip (removed erroneous fixture-perspective conversion)
+- [x] Audit reportMatch DB function: confirmed player1Id = submitter = Team A, winner=A means submitter won
+- [x] Audit fixture player ordering: confirmed backend ignores fixture team assignment, always uses submitter as Team A
+- [x] Fix mismatch: removed winner flip in both Results.tsx and Dashboard.tsx
+- [x] Tests: 28/28 pass after fix
