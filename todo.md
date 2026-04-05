@@ -200,3 +200,13 @@
 - [x] Leaderboard/Standings page: update points description
 - [x] Dashboard: update any points explanation text
 - [x] Tests: cover new points calculation (11 new tests, 39 total passing)
+
+## Round 22 — Admin Result Entry for All Boxes
+
+- [x] Backend: adminGetAllFixtures query — all fixtures for a season with player names, grouped by box
+- [x] Backend: adminReportMatch procedure — admin-only, calls reportMatch on behalf of any fixture
+- [x] Admin UI: Matches tab — add "Scheduled Fixtures" section showing all unplayed fixtures across all boxes
+- [x] Admin UI: Each scheduled fixture row has an inline "Enter Result" form with SetScoreEntry
+- [x] Admin UI: Fixtures grouped by box name with round labels
+- [x] Admin UI: After result entry, fixture moves from scheduled to completed section
+- [x] Tests: cover adminGetAllFixtures and adminReportMatch procedures (44/44 passing)

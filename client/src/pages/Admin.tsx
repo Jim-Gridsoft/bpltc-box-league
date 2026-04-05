@@ -2,10 +2,11 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import TournamentNav from "@/components/TournamentNav";
+import SetScoreEntry, { ScoreResult } from "@/components/SetScoreEntry";
 import { toast } from "sonner";
 import {
   Shield, Users, Trophy, CheckCircle2, XCircle,
-  Loader2, ChevronDown, ChevronUp, Calendar, Plus, Trash2,
+  Loader2, ChevronDown, ChevronUp, Calendar, Plus, Trash2, ClipboardList,
 } from "lucide-react";
 
 export default function Admin() {
@@ -370,25 +371,47 @@ export default function Admin() {
 
         {/* Matches tab */}
         {activeTab === "matches" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-[#c9a84c]" />
-              <h2 className="font-serif text-xl font-bold text-[#1b4332]">Match Results</h2>
-            </div>
-            {!boxes || boxes.length === 0 ? (
-              <div className="p-8 text-center text-gray-400">No boxes created for this season yet.</div>
-            ) : (
-              <div className="divide-y divide-gray-50">
-                {boxes.map((box) => (
-                  <BoxMatchesRow
-                    key={box.id}
-                    box={box}
-                    onVerify={(id) => verifyMatchMutation.mutate({ matchId: id })}
-                    onDelete={(id) => deleteMatchMutation.mutate({ matchId: id })}
-                  />
-                ))}
+          <div className="space-y-6">
+            {/* Admin fixture entry — all scheduled fixtures across all boxes */}
+            <AdminFixtureEntry
+              seasonId={activeSeason?.id ?? 0}
+              onResultSubmitted={() => {
+                utils.tournament.seasonBoxes.invalidate();
+                utils.tournament.seasonLeaderboard.invalidate();
+                utils.tournament.yearLeaderboard.invalidate();
+                utils.tournament.adminAllFixtures.invalidate();
+              }}
+            />
+
+            {/* Existing completed match results per box */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-[#c9a84c]" />
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Completed Match Results</h2>
               </div>
-            )}
+              {!boxes || boxes.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">No boxes created for this season yet.</div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {boxes.map((box) => (
+                    <BoxMatchesRow
+                      key={box.id}
+                      box={box}
+                      onVerify={(id) => verifyMatchMutation.mutate({ matchId: id })}
+                      onDelete={(id) => {
+                        deleteMatchMutation.mutate({ matchId: id }, {
+                          onSuccess: () => {
+                            utils.tournament.adminAllFixtures.invalidate();
+                            utils.tournament.seasonLeaderboard.invalidate();
+                            utils.tournament.yearLeaderboard.invalidate();
+                          }
+                        });
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1005,6 +1028,237 @@ function DisputesTab() {
                   </div>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── AdminFixtureEntry ─────────────────────────────────────────────────────────
+
+/**
+ * Displays all scheduled (unplayed) fixtures for a season, grouped by box.
+ * Admins can expand any fixture and enter the result using the SetScoreEntry component.
+ */
+function AdminFixtureEntry({
+  seasonId,
+  onResultSubmitted,
+}: {
+  seasonId: number;
+  onResultSubmitted: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data: allBoxFixtures, isLoading } = trpc.tournament.adminAllFixtures.useQuery(
+    { seasonId },
+    { enabled: seasonId > 0 }
+  );
+
+  const adminReportMatch = trpc.tournament.adminReportMatch.useMutation({
+    onSuccess: () => {
+      toast.success("Result recorded successfully.");
+      utils.tournament.adminAllFixtures.invalidate();
+      onResultSubmitted();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  // Track which fixture is being edited
+  const [expandedFixtureId, setExpandedFixtureId] = useState<number | null>(null);
+  const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
+  const [playedAt, setPlayedAt] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState<string>("");
+
+  const scheduledBoxes = allBoxFixtures
+    ?.map((box) => ({
+      ...box,
+      fixtures: box.fixtures.filter((f) => f.status === "scheduled"),
+    }))
+    .filter((box) => box.fixtures.length > 0);
+
+  const scheduledCount = scheduledBoxes?.reduce((n, b) => n + b.fixtures.length, 0) ?? 0;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+        <ClipboardList className="w-5 h-5 text-[#c9a84c]" />
+        <h2 className="font-serif text-xl font-bold text-[#1b4332]">Enter Match Results</h2>
+        {scheduledCount > 0 && (
+          <span className="ml-auto text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-medium">
+            {scheduledCount} to play
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="p-8 text-center">
+          <Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" />
+        </div>
+      ) : !scheduledBoxes || scheduledBoxes.length === 0 ? (
+        <div className="p-8 text-center text-gray-400">
+          {allBoxFixtures && allBoxFixtures.length > 0
+            ? "All fixtures have been played. No pending results to enter."
+            : "No fixtures generated for this season yet."}
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {scheduledBoxes.map((box) => (
+            <div key={box.boxId}>
+              {/* Box header */}
+              <div className="px-6 py-3 bg-gray-50 border-b border-gray-100">
+                <p className="text-xs font-bold text-[#1b4332] uppercase tracking-wide">
+                  {box.boxName}
+                </p>
+              </div>
+
+              {/* Fixtures in this box */}
+              {box.fixtures.map((fixture) => {
+                const isExpanded = expandedFixtureId === fixture.id;
+                const teamALabel = `${fixture.teamAPlayer1Name} & ${fixture.teamAPlayer2Name}`;
+                const teamBLabel = `${fixture.teamBPlayer1Name} & ${fixture.teamBPlayer2Name}`;
+
+                return (
+                  <div key={fixture.id} className="border-b border-gray-50 last:border-0">
+                    {/* Fixture row */}
+                    <div
+                      className="px-6 py-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => {
+                        if (isExpanded) {
+                          setExpandedFixtureId(null);
+                          setScoreResult(null);
+                        } else {
+                          setExpandedFixtureId(fixture.id);
+                          setScoreResult(null);
+                          setPlayedAt(new Date().toISOString().slice(0, 10));
+                          setNotes("");
+                        }
+                      }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-400 mb-0.5">Round {fixture.round}</p>
+                        <p className="text-sm font-medium text-gray-800 truncate">
+                          <span className="text-[#1b4332] font-semibold">{teamALabel}</span>
+                          <span className="text-gray-400 mx-2">vs</span>
+                          <span className="text-gray-700">{teamBLabel}</span>
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
+                          Scheduled
+                        </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-gray-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Inline result entry form */}
+                    {isExpanded && (
+                      <div className="px-6 pb-6 bg-green-50/30 border-t border-gray-100">
+                        <div className="max-w-lg pt-4 space-y-5">
+                          {/* Team labels */}
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="bg-[#1b4332]/5 rounded-lg p-3">
+                              <p className="text-xs font-bold text-[#1b4332] uppercase tracking-wide mb-1">Team A</p>
+                              <p className="font-medium text-gray-800">{fixture.teamAPlayer1Name}</p>
+                              <p className="font-medium text-gray-800">{fixture.teamAPlayer2Name}</p>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-3">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Team B</p>
+                              <p className="font-medium text-gray-800">{fixture.teamBPlayer1Name}</p>
+                              <p className="font-medium text-gray-800">{fixture.teamBPlayer2Name}</p>
+                            </div>
+                          </div>
+
+                          {/* Score entry — "My team" = Team A in admin context */}
+                          <div>
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                              Score (Team A vs Team B)
+                            </p>
+                            <SetScoreEntry
+                              key={fixture.id}
+                              onChange={(result) => setScoreResult(result)}
+                            />
+                          </div>
+
+                          {/* Date played */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                              Date Played
+                            </label>
+                            <input
+                              type="date"
+                              value={playedAt}
+                              onChange={(e) => setPlayedAt(e.target.value)}
+                              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                            />
+                          </div>
+
+                          {/* Notes */}
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+                              Notes (optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={notes}
+                              onChange={(e) => setNotes(e.target.value)}
+                              placeholder="e.g. walkover, injury, etc."
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                            />
+                          </div>
+
+                          {/* Validation message */}
+                          {scoreResult && !scoreResult.valid && scoreResult.message && (
+                            <p className="text-xs text-amber-600">{scoreResult.message}</p>
+                          )}
+                          {scoreResult?.valid && scoreResult.winner && (
+                            <p className="text-xs text-green-700 font-medium">
+                              ✓ {scoreResult.winner === "A" ? teamALabel : teamBLabel} won — {scoreResult.scoreString}
+                            </p>
+                          )}
+
+                          {/* Submit */}
+                          <div className="flex items-center gap-3">
+                            <button
+                              disabled={!scoreResult?.valid || adminReportMatch.isPending}
+                              onClick={() => {
+                                if (!scoreResult?.valid || !scoreResult.winner) return;
+                                adminReportMatch.mutate({
+                                  seasonId,
+                                  boxId: box.boxId,
+                                  fixtureId: fixture.id,
+                                  player1Id: fixture.teamAPlayer1,
+                                  partner1Id: fixture.teamAPlayer2,
+                                  player2Id: fixture.teamBPlayer1,
+                                  partner2Id: fixture.teamBPlayer2,
+                                  score: scoreResult.scoreString,
+                                  winner: scoreResult.winner,
+                                  playedAt: new Date(playedAt),
+                                  notes: notes.trim() || undefined,
+                                });
+                              }}
+                              className="bg-[#1b4332] text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-[#2d6a4f] transition-colors disabled:opacity-40 flex items-center gap-2"
+                            >
+                              {adminReportMatch.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                              Record Result
+                            </button>
+                            <button
+                              onClick={() => { setExpandedFixtureId(null); setScoreResult(null); }}
+                              className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>

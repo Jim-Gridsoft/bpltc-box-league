@@ -43,6 +43,7 @@ import {
   getMyFixtures,
   deleteSeason,
   endSeason,
+  getAllFixturesBySeason,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -639,5 +640,75 @@ export const tournamentRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       return sandboxResetSeason(input.seasonId);
+    }),
+
+  /**
+   * Admin: get all fixtures for a season across all boxes, with player names.
+   * Used to display the full fixture list in the admin Matches tab.
+   */
+  adminAllFixtures: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return getAllFixturesBySeason(input.seasonId);
+    }),
+
+  /**
+   * Admin: report a match result for any fixture in any box.
+   * The admin specifies which team won; points are calculated and applied
+   * using the same 2/1/0 logic as the regular reportMatch procedure.
+   */
+  adminReportMatch: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        boxId: z.number(),
+        fixtureId: z.number(),
+        // Team A player user IDs
+        player1Id: z.number(),
+        partner1Id: z.number(),
+        // Team B player user IDs
+        player2Id: z.number(),
+        partner2Id: z.number(),
+        score: z.string().min(1).max(64),
+        winner: z.enum(["A", "B"]),
+        playedAt: z.date(),
+        notes: z.string().max(500).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+
+      // Validate all four players are distinct
+      const ids = [input.player1Id, input.partner1Id, input.player2Id, input.partner2Id];
+      if (new Set(ids).size !== 4) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "All four players must be different people.",
+        });
+      }
+
+      const match = await reportMatch(
+        {
+          boxId: input.boxId,
+          seasonId: input.seasonId,
+          player1Id: input.player1Id,
+          partner1Id: input.partner1Id,
+          player2Id: input.player2Id,
+          partner2Id: input.partner2Id,
+          score: input.score,
+          winner: input.winner,
+          playedAt: input.playedAt,
+          notes: input.notes ?? null,
+        },
+        input.fixtureId
+      );
+
+      await notifyOwner({
+        title: "Admin entered match result",
+        content: `Admin ${ctx.user.name ?? ctx.user.id} entered result for fixture ${input.fixtureId} in Box ${input.boxId}. Score: ${input.score}. Winner: Team ${input.winner}.`,
+      });
+
+      return match;
     }),
 });

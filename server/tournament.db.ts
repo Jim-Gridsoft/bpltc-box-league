@@ -1281,3 +1281,111 @@ export async function endSeason(seasonId: number): Promise<{
 
   return summary;
 }
+
+/**
+ * Get ALL fixtures for a season, grouped by box, with player display names resolved.
+ * Used by the admin panel to display every scheduled and played fixture across all boxes.
+ */
+export async function getAllFixturesBySeason(seasonId: number): Promise<
+  {
+    boxId: number;
+    boxName: string;
+    boxLevel: number;
+    fixtures: {
+      id: number;
+      round: number;
+      status: string;
+      teamAPlayer1: number;
+      teamAPlayer2: number;
+      teamBPlayer1: number;
+      teamBPlayer2: number;
+      teamAPlayer1Name: string;
+      teamAPlayer2Name: string;
+      teamBPlayer1Name: string;
+      teamBPlayer2Name: string;
+      // entrant IDs (needed for reportMatch)
+      teamAEntrant1: number;
+      teamAEntrant2: number;
+      teamBEntrant1: number;
+      teamBEntrant2: number;
+    }[];
+  }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get all boxes for the season
+  const seasonBoxes = await db
+    .select()
+    .from(boxes)
+    .where(eq(boxes.seasonId, seasonId))
+    .orderBy(boxes.level);
+
+  const result = [];
+
+  for (const box of seasonBoxes) {
+    const rows = await db
+      .select()
+      .from(fixtures)
+      .where(eq(fixtures.boxId, box.id))
+      .orderBy(fixtures.round, fixtures.id);
+
+    if (rows.length === 0) {
+      result.push({ boxId: box.id, boxName: box.name, boxLevel: box.level, fixtures: [] });
+      continue;
+    }
+
+    // Collect all user IDs
+    const allUserIds = new Set<number>();
+    for (const f of rows) {
+      allUserIds.add(f.teamAPlayer1);
+      allUserIds.add(f.teamAPlayer2);
+      allUserIds.add(f.teamBPlayer1);
+      allUserIds.add(f.teamBPlayer2);
+    }
+
+    const userRows = await db
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, Array.from(allUserIds)));
+
+    const nameMap = new Map(userRows.map((u) => [u.id, u.name ?? "Unknown"]));
+
+    // Resolve entrant IDs (seasonEntrant.id) for each player userId in this season
+    const entrantRows = await db
+      .select({ id: seasonEntrants.id, userId: seasonEntrants.userId })
+      .from(seasonEntrants)
+      .where(
+        and(
+          eq(seasonEntrants.seasonId, seasonId),
+          inArray(seasonEntrants.userId, Array.from(allUserIds))
+        )
+      );
+    const entrantMap = new Map(entrantRows.map((e) => [e.userId, e.id]));
+
+    result.push({
+      boxId: box.id,
+      boxName: box.name,
+      boxLevel: box.level,
+      fixtures: rows.map((f) => ({
+        id: f.id,
+        round: f.round,
+        status: f.status,
+        teamAPlayer1: f.teamAPlayer1,
+        teamAPlayer2: f.teamAPlayer2,
+        teamBPlayer1: f.teamBPlayer1,
+        teamBPlayer2: f.teamBPlayer2,
+        teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
+        teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+        teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
+        teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+        teamAEntrant1: entrantMap.get(f.teamAPlayer1) ?? 0,
+        teamAEntrant2: entrantMap.get(f.teamAPlayer2) ?? 0,
+        teamBEntrant1: entrantMap.get(f.teamBPlayer1) ?? 0,
+        teamBEntrant2: entrantMap.get(f.teamBPlayer2) ?? 0,
+      })),
+    });
+  }
+
+  return result;
+}

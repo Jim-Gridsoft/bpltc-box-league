@@ -35,6 +35,7 @@ vi.mock("./tournament.db", () => ({
   getIncomingRequests: vi.fn().mockResolvedValue([]),
   getOutgoingRequests: vi.fn().mockResolvedValue([]),
   respondToMatchRequest: vi.fn().mockResolvedValue(undefined),
+  getAllFixturesBySeason: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock notification helper so tests don't make real HTTP calls
@@ -296,5 +297,52 @@ describe("auth.logout", () => {
     const result = await caller.auth.logout();
     expect(result).toEqual({ success: true });
     expect(clearedCookies).toHaveLength(1);
+  });
+});
+
+describe("tournament.adminAllFixtures (admin only)", () => {
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.adminAllFixtures({ seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("returns empty array when no fixtures exist for the season", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.adminAllFixtures({ seasonId: 1 });
+    expect(Array.isArray(result)).toBe(true);
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe("tournament.adminReportMatch (admin only)", () => {
+  const validInput = {
+    seasonId: 1,
+    boxId: 1,
+    fixtureId: 10,
+    player1Id: 1,
+    partner1Id: 2,
+    player2Id: 3,
+    partner2Id: 4,
+    score: "6-3 6-2",
+    winner: "A" as const,
+    playedAt: new Date(),
+  };
+
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.adminReportMatch(validInput)).rejects.toThrow();
+  });
+
+  it("throws BAD_REQUEST when player IDs are not all distinct", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    await expect(
+      caller.tournament.adminReportMatch({ ...validInput, partner1Id: 1 }) // duplicate player1Id
+    ).rejects.toThrow("All four players must be different people.");
+  });
+
+  it("allows admin to report a match result for any fixture", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.adminReportMatch(validInput);
+    expect(result).toMatchObject({ id: 1 });
   });
 });
