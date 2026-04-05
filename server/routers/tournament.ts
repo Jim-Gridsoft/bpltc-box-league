@@ -227,6 +227,7 @@ export const tournamentRouter = router({
         winner: z.enum(["A", "B"]),
         playedAt: z.date(),
         notes: z.string().max(500).optional(),
+        fixtureId: z.number().optional(), // optional: link result to a scheduled fixture
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -258,7 +259,7 @@ export const tournamentRouter = router({
         winner: input.winner,
         playedAt: input.playedAt,
         notes: input.notes ?? null,
-      });
+      }, input.fixtureId);
 
       await notifyOwner({
         title: "Match result reported",

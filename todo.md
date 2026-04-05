@@ -76,3 +76,13 @@
 - [x] Admin UI: Fixture schedule display per box with match dates
 - [x] Dashboard: My Fixtures tab showing upcoming and completed matches
 - [x] Tests: cover new procedures
+
+## Round 7 — Match Result Entry from Fixtures
+
+- [x] Dashboard: Add "Record Result" inline form on each scheduled fixture card
+- [x] Dashboard: Pre-populate partner and opponent names from fixture data
+- [x] Dashboard: Score entry (e.g. 6-4 6-3), winner selection, date picker
+- [x] Dashboard: Submit result calls reportMatch procedure and marks fixture as played
+- [x] Backend: Update reportMatch to accept optional fixtureId and mark fixture status=played
+- [x] Backend: Ensure fixture status is updated when a match result is submitted
+- [x] Tests: cover fixture-linked match reporting

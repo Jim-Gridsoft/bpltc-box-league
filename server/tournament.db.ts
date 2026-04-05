@@ -308,7 +308,7 @@ export async function getMatchesByUser(userId: number, seasonId?: number) {
   );
 }
 
-export async function reportMatch(data: InsertMatch) {
+export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -363,7 +363,17 @@ export async function reportMatch(data: InsertMatch) {
   }
 
   const rows = await db.select().from(matches).orderBy(desc(matches.id)).limit(1);
-  return rows[0];
+  const newMatch = rows[0];
+
+  // If this result was submitted against a specific fixture, mark it as played
+  if (fixtureId && newMatch) {
+    await db
+      .update(fixtures)
+      .set({ status: "played", matchId: newMatch.id })
+      .where(eq(fixtures.id, fixtureId));
+  }
+
+  return newMatch;
 }
 
 export async function verifyMatch(matchId: number) {
