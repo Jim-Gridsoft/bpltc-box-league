@@ -157,6 +157,32 @@ export const partnerSlots = mysqlTable("partner_slots", {
 export type PartnerSlot = typeof partnerSlots.$inferSelect;
 export type InsertPartnerSlot = typeof partnerSlots.$inferInsert;
 
+// ── Fixtures ──────────────────────────────────────────────────────────────────
+// Auto-generated round-robin schedule. Each fixture is a planned doubles match
+// between two pairs within a box. Partners are suggested but can be swapped.
+export const fixtures = mysqlTable("fixtures", {
+  id: int("id").autoincrement().primaryKey(),
+  boxId: int("boxId").notNull(),
+  seasonId: int("seasonId").notNull(),
+  /** Round number within the season (1, 2, 3 ...) */
+  round: int("round").notNull(),
+  /** Team A player 1 (userId) */
+  teamAPlayer1: int("teamAPlayer1").notNull(),
+  /** Team A player 2 (userId) */
+  teamAPlayer2: int("teamAPlayer2").notNull(),
+  /** Team B player 1 (userId) */
+  teamBPlayer1: int("teamBPlayer1").notNull(),
+  /** Team B player 2 (userId) */
+  teamBPlayer2: int("teamBPlayer2").notNull(),
+  /** Linked match result once played */
+  matchId: int("matchId"),
+  status: mysqlEnum("status", ["scheduled", "played", "cancelled"]).default("scheduled").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Fixture = typeof fixtures.$inferSelect;
+export type InsertFixture = typeof fixtures.$inferInsert;
+
 // ── Match Requests ─────────────────────────────────────────────────────────────
 // Sent by one player to another in response to an open partner slot.
 export const matchRequests = mysqlTable("match_requests", {

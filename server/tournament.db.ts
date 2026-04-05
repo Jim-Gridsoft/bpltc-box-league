@@ -1,4 +1,5 @@
 import { eq, desc, and, asc, like, or } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   seasons,
@@ -17,6 +18,8 @@ import {
   InsertMatch,
   InsertPartnerSlot,
   InsertMatchRequest,
+  fixtures,
+  InsertFixture,
 } from "../drizzle/schema";
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
@@ -733,4 +736,261 @@ export async function sandboxResetSeason(seasonId: number) {
     );
 
   return { deletedUsers: sandboxUserIds.length };
+}
+
+// ── Auto Box Creation & Fixture Generation ────────────────────────────────────
+
+/**
+ * Auto-create ability-seeded boxes for a season and assign all paid entrants.
+ * Entrants are sorted by abilityRating (desc) and distributed into boxes of
+ * targetBoxSize (default 6). Returns the created boxes with their members.
+ */
+export async function autoCreateBoxes(
+  seasonId: number,
+  targetBoxSize: number = 6
+): Promise<{ boxId: number; name: string; level: number; members: { entrantId: number; displayName: string; abilityRating: number }[] }[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all paid entrants for the season, sorted by ability (best first)
+  const entrants = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.seasonId, seasonId), eq(seasonEntrants.paid, true)))
+    .orderBy(desc(seasonEntrants.abilityRating));
+
+  if (entrants.length < 2) {
+    throw new Error("Need at least 2 paid entrants to create boxes.");
+  }
+
+  // Remove any existing boxes and box members for this season
+  const existingBoxes = await db
+    .select({ id: boxes.id })
+    .from(boxes)
+    .where(eq(boxes.seasonId, seasonId));
+
+  for (const box of existingBoxes) {
+    await db.delete(boxMembers).where(eq(boxMembers.boxId, box.id));
+    // Also delete fixtures for this box
+    await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+  }
+  await db.delete(boxes).where(eq(boxes.seasonId, seasonId));
+
+  // Divide entrants into groups of targetBoxSize
+  const boxNames = ["Box A", "Box B", "Box C", "Box D", "Box E", "Box F", "Box G", "Box H"];
+  const numBoxes = Math.ceil(entrants.length / targetBoxSize);
+  const result: { boxId: number; name: string; level: number; members: { entrantId: number; displayName: string; abilityRating: number }[] }[] = [];
+
+  for (let i = 0; i < numBoxes; i++) {
+    const name = boxNames[i] ?? `Box ${i + 1}`;
+    const level = i + 1;
+
+    // Insert the box
+    await db.insert(boxes).values({ seasonId, name, level });
+    const boxRows = await db
+      .select()
+      .from(boxes)
+      .where(and(eq(boxes.seasonId, seasonId), eq(boxes.level, level)))
+      .orderBy(desc(boxes.createdAt))
+      .limit(1);
+    const box = boxRows[0];
+    if (!box) continue;
+
+    // Assign entrants to this box
+    const slice = entrants.slice(i * targetBoxSize, (i + 1) * targetBoxSize);
+    const members: { entrantId: number; displayName: string; abilityRating: number }[] = [];
+
+    for (const entrant of slice) {
+      await db.insert(boxMembers).values({ boxId: box.id, seasonEntrantId: entrant.id });
+      members.push({ entrantId: entrant.id, displayName: entrant.displayName, abilityRating: entrant.abilityRating });
+    }
+
+    result.push({ boxId: box.id, name, level, members });
+  }
+
+  return result;
+}
+
+/**
+ * Generate a round-robin fixture schedule for all boxes in a season.
+ * Uses the "circle method" to produce a balanced schedule where every pair
+ * of players meets exactly once as opponents, with rotating partners.
+ *
+ * For a box of N players (N must be even):
+ *   - Each round has N/2 matches (N/4 doubles matches)
+ *   - Total rounds = N - 1
+ *
+ * Returns the total number of fixtures created.
+ */
+export async function generateFixtures(seasonId: number): Promise<{ totalFixtures: number; boxCount: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all boxes for the season
+  const seasonBoxes = await db
+    .select()
+    .from(boxes)
+    .where(eq(boxes.seasonId, seasonId));
+
+  if (seasonBoxes.length === 0) {
+    throw new Error("No boxes found for this season. Create boxes first.");
+  }
+
+  let totalFixtures = 0;
+
+  for (const box of seasonBoxes) {
+    // Get all members of this box with their user IDs
+    const members = await db
+      .select({
+        entrantId: boxMembers.seasonEntrantId,
+        userId: seasonEntrants.userId,
+        displayName: seasonEntrants.displayName,
+      })
+      .from(boxMembers)
+      .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
+      .where(eq(boxMembers.boxId, box.id));
+
+    const playerIds = members.map((m) => m.userId).filter((id): id is number => id !== null);
+
+    if (playerIds.length < 4) continue; // Need at least 4 for doubles
+
+    // Delete existing fixtures for this box
+    await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+
+    // Pad to even number if needed
+    const players = [...playerIds];
+    if (players.length % 2 !== 0) {
+      players.push(-1); // bye placeholder
+    }
+
+    const n = players.length;
+    const fixtureRows: InsertFixture[] = [];
+
+    // Circle method: fix players[0], rotate the rest
+    for (let round = 0; round < n - 1; round++) {
+      // Build the round pairings using the circle method
+      const roundPlayers = [players[0], ...players.slice(1).slice(round).concat(players.slice(1).slice(0, round))];
+
+      // Pair them up: (0,n-1), (1,n-2), (2,n-3)...
+      const pairs: [number, number][] = [];
+      for (let i = 0; i < n / 2; i++) {
+        const p1 = roundPlayers[i];
+        const p2 = roundPlayers[n - 1 - i];
+        if (p1 !== -1 && p2 !== -1) {
+          pairs.push([p1, p2]);
+        }
+      }
+
+      // Group pairs into doubles matches: pair[0] vs pair[1], pair[2] vs pair[3], etc.
+      for (let m = 0; m + 1 < pairs.length; m += 2) {
+        const teamA = pairs[m];
+        const teamB = pairs[m + 1];
+        if (teamA && teamB) {
+          fixtureRows.push({
+            boxId: box.id,
+            seasonId,
+            round: round + 1,
+            teamAPlayer1: teamA[0],
+            teamAPlayer2: teamA[1],
+            teamBPlayer1: teamB[0],
+            teamBPlayer2: teamB[1],
+            status: "scheduled",
+          });
+        }
+      }
+    }
+
+    if (fixtureRows.length > 0) {
+      await db.insert(fixtures).values(fixtureRows);
+      totalFixtures += fixtureRows.length;
+    }
+  }
+
+  return { totalFixtures, boxCount: seasonBoxes.length };
+}
+
+/**
+ * Get all fixtures for a box, with player display names resolved.
+ */
+export async function getFixturesByBox(boxId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db
+    .select()
+    .from(fixtures)
+    .where(eq(fixtures.boxId, boxId))
+    .orderBy(fixtures.round, fixtures.id);
+
+  // Resolve player names
+  const allUserIds = new Set<number>();
+  for (const f of rows) {
+    allUserIds.add(f.teamAPlayer1);
+    allUserIds.add(f.teamAPlayer2);
+    allUserIds.add(f.teamBPlayer1);
+    allUserIds.add(f.teamBPlayer2);
+  }
+
+  const userRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, Array.from(allUserIds)));
+
+  const nameMap = new Map(userRows.map((u) => [u.id, u.name ?? "Unknown"]));
+
+  return rows.map((f) => ({
+    ...f,
+    teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
+    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
+    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+  }));
+}
+
+/**
+ * Get all fixtures for a season that involve a specific user.
+ */
+export async function getMyFixtures(userId: number, seasonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const rows = await db
+    .select()
+    .from(fixtures)
+    .where(
+      and(
+        eq(fixtures.seasonId, seasonId),
+        or(
+          eq(fixtures.teamAPlayer1, userId),
+          eq(fixtures.teamAPlayer2, userId),
+          eq(fixtures.teamBPlayer1, userId),
+          eq(fixtures.teamBPlayer2, userId)
+        )
+      )
+    )
+    .orderBy(fixtures.round, fixtures.id);
+
+  // Resolve player names
+  const allUserIds = new Set<number>();
+  for (const f of rows) {
+    allUserIds.add(f.teamAPlayer1);
+    allUserIds.add(f.teamAPlayer2);
+    allUserIds.add(f.teamBPlayer1);
+    allUserIds.add(f.teamBPlayer2);
+  }
+
+  const userRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, Array.from(allUserIds)));
+
+  const nameMap = new Map(userRows.map((u) => [u.id, u.name ?? "Unknown"]));
+
+  return rows.map((f) => ({
+    ...f,
+    teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
+    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
+    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+  }));
 }

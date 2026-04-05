@@ -12,8 +12,10 @@ export default function Admin() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [expandedEntrant, setExpandedEntrant] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"entrants" | "matches" | "seasons" | "sandbox">("entrants");
+  // activeTab is now declared above with boxes included
   const [seedCount, setSeedCount] = useState(6);
+  const [targetBoxSize, setTargetBoxSize] = useState(6);
+  const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "sandbox">("entrants");
 
   // Create season form
   const [newSeasonName, setNewSeasonName] = useState("");
@@ -67,6 +69,23 @@ export default function Admin() {
     onSuccess: (data) => {
       toast.success(`${data.created} test players added to the season.`);
       utils.tournament.adminSeasonEntrants.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const autoCreateBoxesMutation = trpc.tournament.adminAutoCreateBoxes.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.length} boxes created successfully!`);
+      utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.adminSeasonEntrants.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const generateFixturesMutation = trpc.tournament.adminGenerateFixtures.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.totalFixtures} fixtures generated across ${data.boxCount} boxes!`);
+      utils.tournament.seasonBoxes.invalidate();
     },
     onError: (e: { message: string }) => toast.error(e.message),
   });
@@ -152,14 +171,14 @@ export default function Admin() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-          {(["entrants", "matches", "seasons", "sandbox"] as const).map((tab) => (
+             {(["entrants", "boxes", "matches", "seasons", "sandbox"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
                 activeTab === tab
                   ? tab === "sandbox" ? "bg-amber-500 shadow-sm text-white" : "bg-white shadow-sm text-[#1b4332]"
                   : tab === "sandbox" ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
               }`}>
-              {tab === "sandbox" ? "🧪 Sandbox" : tab}
+              {tab === "sandbox" ? "🧪 Sandbox" : tab === "boxes" ? "📦 Boxes" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -218,6 +237,88 @@ export default function Admin() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Boxes tab */}
+        {activeTab === "boxes" && (
+          <div className="space-y-6">
+            {/* Auto-create boxes */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl">📦</span>
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Auto-Create Ability-Seeded Boxes</h2>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Automatically groups all paid entrants into boxes by ability rating (highest to lowest). Existing boxes and fixtures for this season will be cleared and recreated.
+              </p>
+              <div className="flex items-end gap-4 flex-wrap">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Target players per box</label>
+                  <select value={targetBoxSize} onChange={(e) => setTargetBoxSize(Number(e.target.value))}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
+                    {[4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} players per box</option>)}
+                  </select>
+                </div>
+                <button
+                  onClick={() => activeSeason && autoCreateBoxesMutation.mutate({ seasonId: activeSeason.id, targetBoxSize })}
+                  disabled={!activeSeason || autoCreateBoxesMutation.isPending}
+                  className="bg-[#1b4332] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center gap-2">
+                  {autoCreateBoxesMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Create Boxes
+                </button>
+              </div>
+              {autoCreateBoxesMutation.data && (
+                <div className="mt-4 space-y-2">
+                  {autoCreateBoxesMutation.data.map((box) => (
+                    <div key={box.boxId} className="bg-green-50 border border-green-100 rounded-lg px-4 py-2.5">
+                      <p className="font-medium text-green-800 text-sm">{box.name} — {box.members.length} players</p>
+                      <p className="text-xs text-green-600">{box.members.map((m) => `${m.displayName} (${m.abilityRating}/5)`).join(" · ")}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Generate fixtures */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xl">📅</span>
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Generate Round-Robin Fixtures</h2>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Generates a full round-robin fixture schedule for all boxes using the circle method. Each round produces doubles matches with rotating partners so no two players partner each other more than once per season.
+              </p>
+              <button
+                onClick={() => activeSeason && generateFixturesMutation.mutate({ seasonId: activeSeason.id })}
+                disabled={!activeSeason || !boxes || boxes.length === 0 || generateFixturesMutation.isPending}
+                className="bg-[#c9a84c] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b8963e] transition-colors disabled:opacity-50 flex items-center gap-2">
+                {generateFixturesMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Generate Fixtures
+              </button>
+              {!boxes || boxes.length === 0 ? (
+                <p className="text-xs text-amber-600 mt-3">Create boxes first before generating fixtures.</p>
+              ) : generateFixturesMutation.data ? (
+                <p className="text-sm text-green-700 mt-3 font-medium">
+                  ✓ {generateFixturesMutation.data.totalFixtures} fixtures generated across {generateFixturesMutation.data.boxCount} boxes.
+                </p>
+              ) : null}
+            </div>
+
+            {/* Box fixture viewer */}
+            {boxes && boxes.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-[#c9a84c]" />
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">Box Fixture Schedules</h2>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {boxes.map((box) => (
+                    <BoxFixtureRow key={box.id} box={box} />
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -418,6 +519,49 @@ export default function Admin() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function BoxFixtureRow({ box }: { box: { id: number; name: string } }) {
+  const [expanded, setExpanded] = useState(false);
+  const { data: fixtures } = trpc.tournament.boxFixtures.useQuery({ boxId: box.id }, { enabled: expanded });
+
+  return (
+    <div>
+      <div className="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50" onClick={() => setExpanded(!expanded)}>
+        <p className="font-medium text-gray-800">{box.name}</p>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </div>
+      {expanded && (
+        <div className="px-6 pb-4 bg-gray-50 border-t border-gray-100">
+          {!fixtures || fixtures.length === 0 ? (
+            <p className="text-sm text-gray-400 pt-3">No fixtures generated for this box yet.</p>
+          ) : (
+            <div className="space-y-3 pt-3">
+              {Array.from(new Set(fixtures.map((f) => f.round))).sort((a, b) => a - b).map((round) => (
+                <div key={round}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Round {round}</p>
+                  {fixtures.filter((f) => f.round === round).map((f) => (
+                    <div key={f.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-gray-100 mb-1">
+                      <div className="text-sm text-gray-700">
+                        <span className="font-medium">{f.teamAPlayer1Name} &amp; {f.teamAPlayer2Name}</span>
+                        <span className="text-gray-400 mx-2">vs</span>
+                        <span className="font-medium">{f.teamBPlayer1Name} &amp; {f.teamBPlayer2Name}</span>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                        f.status === "played" ? "bg-green-100 text-green-700" :
+                        f.status === "cancelled" ? "bg-red-100 text-red-600" :
+                        "bg-blue-100 text-blue-700"
+                      }`}>{f.status}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

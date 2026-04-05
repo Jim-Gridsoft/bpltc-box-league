@@ -64,3 +64,15 @@
 - [ ] Frontend: Dashboard — "Register Free (Demo)" button alongside normal Stripe button
 - [ ] Frontend: Admin — "Seed Test Players" panel with count selector and reset button
 - [ ] Tests updated for new sandbox procedures
+
+## Round 6 — Box Creation, Fixtures & Season Auto-Seed
+
+- [x] Backend: adminAutoCreateBoxes procedure (ability-seeded grouping of paid entrants)
+- [x] Backend: adminGenerateFixtures procedure (round-robin schedule per box)
+- [x] Backend: getBoxFixtures query (fetch fixtures for a box)
+- [x] Backend: seasonFixtures query (all fixtures for a season, grouped by box)
+- [x] Backend: seed Spring 2026 season on server startup if no seasons exist
+- [x] Admin UI: Create Boxes panel with ability seeding preview and confirm button
+- [x] Admin UI: Fixture schedule display per box with match dates
+- [x] Dashboard: My Fixtures tab showing upcoming and completed matches
+- [x] Tests: cover new procedures

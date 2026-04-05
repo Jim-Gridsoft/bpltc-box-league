@@ -37,6 +37,10 @@ export default function Dashboard() {
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!myEntry?.paid }
   );
+  const { data: myFixtures } = trpc.tournament.myFixtures.useQuery(
+    { seasonId: activeSeason?.id ?? 0 },
+    { enabled: !!myEntry?.paid }
+  );
   const registerMutation = trpc.tournament.register.useMutation({
     onSuccess: () => { toast.success("Registered! Please complete payment."); utils.tournament.myEntry.invalidate(); },
     onError: (e) => toast.error(e.message),
@@ -214,6 +218,52 @@ export default function Dashboard() {
                 Submit Match Result
               </button>
             </div>
+            {/* Fixture schedule */}
+            {myFixtures && myFixtures.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-[#c9a84c]" />
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">My Fixture Schedule</h2>
+                  <span className="ml-auto text-xs text-gray-400">{myFixtures.filter((f) => f.status === "scheduled").length} upcoming</span>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {Array.from(new Set(myFixtures.map((f) => f.round))).sort((a, b) => a - b).map((round) => (
+                    <div key={round} className="px-6 py-4">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Round {round}</p>
+                      {myFixtures.filter((f) => f.round === round).map((f) => {
+                        const iAmTeamA = f.teamAPlayer1 === user?.id || f.teamAPlayer2 === user?.id;
+                        const myPartner = iAmTeamA
+                          ? (f.teamAPlayer1 === user?.id ? f.teamAPlayer2Name : f.teamAPlayer1Name)
+                          : (f.teamBPlayer1 === user?.id ? f.teamBPlayer2Name : f.teamBPlayer1Name);
+                        const opponents = iAmTeamA
+                          ? `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name}`
+                          : `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name}`;
+                        return (
+                          <div key={f.id} className="flex items-start justify-between gap-4 mb-3 last:mb-0 bg-gray-50 rounded-xl p-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-[#1b4332]" />
+                                <span className="text-sm font-medium text-gray-800">Partner: {myPartner}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <ChevronRight className="w-4 h-4 text-gray-400" />
+                                <span className="text-sm text-gray-600">vs {opponents}</span>
+                              </div>
+                            </div>
+                            <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize flex-shrink-0 ${
+                              f.status === "played" ? "bg-green-100 text-green-700" :
+                              f.status === "cancelled" ? "bg-red-100 text-red-600" :
+                              "bg-blue-100 text-blue-700"
+                            }`}>{f.status}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {myMatches && myMatches.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-[#c9a84c]" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">My Box League Match History</h2></div>

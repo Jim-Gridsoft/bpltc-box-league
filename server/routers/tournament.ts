@@ -36,6 +36,10 @@ import {
   sandboxRegisterAndPay,
   sandboxSeedPlayers,
   sandboxResetSeason,
+  autoCreateBoxes,
+  generateFixtures,
+  getFixturesByBox,
+  getMyFixtures,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -467,6 +471,61 @@ export const tournamentRouter = router({
   // ════════════════════════════════════════════════════════════════════════════
   // SANDBOX / DEMO MODE PROCEDURES
   // ════════════════════════════════════════════════════════════════════════════
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // BOX CREATION & FIXTURE GENERATION
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Auto-create ability-seeded boxes for a season and assign all paid entrants.
+   * Admin only. Clears existing boxes and fixtures before recreating.
+   */
+  adminAutoCreateBoxes: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        targetBoxSize: z.number().int().min(4).max(12).default(6),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await autoCreateBoxes(input.seasonId, input.targetBoxSize);
+      await notifyOwner({
+        title: `Boxes created for season ${input.seasonId}`,
+        content: `${result.length} boxes created with ${result.reduce((s, b) => s + b.members.length, 0)} total players.`,
+      });
+      return result;
+    }),
+
+  /**
+   * Generate round-robin fixture schedule for all boxes in a season.
+   * Admin only. Clears existing fixtures before regenerating.
+   */
+  adminGenerateFixtures: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await generateFixtures(input.seasonId);
+      await notifyOwner({
+        title: `Fixtures generated for season ${input.seasonId}`,
+        content: `${result.totalFixtures} fixtures generated across ${result.boxCount} boxes.`,
+      });
+      return result;
+    }),
+
+  /** Get all fixtures for a specific box (public) */
+  boxFixtures: publicProcedure
+    .input(z.object({ boxId: z.number() }))
+    .query(async ({ input }) => {
+      return getFixturesByBox(input.boxId);
+    }),
+
+  /** Get all fixtures for the current user in a season */
+  myFixtures: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return getMyFixtures(ctx.user.id, input.seasonId);
+    }),
 
   /**
    * Register the current user for a season and mark them as paid instantly,
