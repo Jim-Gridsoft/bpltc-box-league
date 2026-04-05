@@ -29,6 +29,13 @@
       "when": 1775990000000,
       "tag": "0003_seasonal_box_league",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775406821595,
+      "tag": "0004_mushy_tyrannus",
+      "breakpoints": true
     }
   ]
 }
