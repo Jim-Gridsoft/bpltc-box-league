@@ -1144,6 +1144,17 @@ function AdminFixtureEntry({
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {fixture.isBalancer && (() => {
+                          let eligibleIds: number[] = [];
+                          try { eligibleIds = fixture.isBalancer && (fixture as any).balancerEligiblePlayers ? JSON.parse((fixture as any).balancerEligiblePlayers) : []; } catch {}
+                          const allInvolved = [fixture.teamAPlayer1, fixture.teamAPlayer2, fixture.teamBPlayer1, fixture.teamBPlayer2];
+                          const allEligible = allInvolved.every(id => eligibleIds.includes(id));
+                          return (
+                            <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
+                              Balancer {allEligible ? '— pts count' : '— partial pts'}
+                            </span>
+                          );
+                        })()}
                         <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">
                           Scheduled
                         </span>
@@ -1172,6 +1183,31 @@ function AdminFixtureEntry({
                               <p className="font-medium text-gray-800">{fixture.teamBPlayer2Name}</p>
                             </div>
                           </div>
+
+                          {/* Balancer notice */}
+                          {fixture.isBalancer && (() => {
+                            let eligibleIds: number[] = [];
+                            try { eligibleIds = (fixture as any).balancerEligiblePlayers ? JSON.parse((fixture as any).balancerEligiblePlayers) : []; } catch {}
+                            const allPlayers = [
+                              { id: fixture.teamAPlayer1, name: fixture.teamAPlayer1Name },
+                              { id: fixture.teamAPlayer2, name: fixture.teamAPlayer2Name },
+                              { id: fixture.teamBPlayer1, name: fixture.teamBPlayer1Name },
+                              { id: fixture.teamBPlayer2, name: fixture.teamBPlayer2Name },
+                            ];
+                            const scoringPlayers = allPlayers.filter(p => eligibleIds.includes(p.id));
+                            const nonScoringPlayers = allPlayers.filter(p => !eligibleIds.includes(p.id));
+                            return (
+                              <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+                                <p className="font-semibold text-amber-800">Balancer match — per-player points</p>
+                                {scoringPlayers.length > 0 && (
+                                  <p className="text-green-700">✔ Points count for: {scoringPlayers.map(p => p.name).join(', ')}</p>
+                                )}
+                                {nonScoringPlayers.length > 0 && (
+                                  <p className="text-amber-700">✘ No points for: {nonScoringPlayers.map(p => p.name).join(', ')} (already at max matches)</p>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           {/* Score entry — "My team" = Team A in admin context */}
                           <div>

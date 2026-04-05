@@ -43,6 +43,13 @@ interface FixtureCardProps {
     teamAPlayer2Name: string;
     teamBPlayer1Name: string;
     teamBPlayer2Name: string;
+    /** When true this is a balancer fixture — per-player points eligibility applies */
+    isBalancer?: boolean;
+    /**
+     * JSON-encoded array of userIds who score points in this balancer fixture.
+     * Players NOT in this list score 0 pts. Null/undefined on normal fixtures.
+     */
+    balancerEligiblePlayers?: string | null;
   };
   currentUserId: number;
   onResultSubmitted: () => void;
@@ -152,6 +159,20 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          {f.isBalancer && (() => {
+            let eligibleIds: number[] = [];
+            try { eligibleIds = f.balancerEligiblePlayers ? JSON.parse(f.balancerEligiblePlayers) : []; } catch {}
+            const meEligible = eligibleIds.includes(currentUserId);
+            return (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium border ${
+                meEligible
+                  ? 'bg-green-100 text-green-700 border-green-200'
+                  : 'bg-amber-100 text-amber-700 border-amber-200'
+              }`}>
+                Balancer — {meEligible ? 'pts count' : '0 pts'}
+              </span>
+            );
+          })()}
           {statusBadge}
           {f.status === "scheduled" && (
             <button
@@ -178,6 +199,30 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Enter Result — My team vs {opponents}
           </p>
+
+          {f.isBalancer && (() => {
+            let eligibleIds: number[] = [];
+            try { eligibleIds = f.balancerEligiblePlayers ? JSON.parse(f.balancerEligiblePlayers) : []; } catch {}
+            const allPlayers = [
+              { id: f.teamAPlayer1, name: f.teamAPlayer1Name },
+              { id: f.teamAPlayer2, name: f.teamAPlayer2Name },
+              { id: f.teamBPlayer1, name: f.teamBPlayer1Name },
+              { id: f.teamBPlayer2, name: f.teamBPlayer2Name },
+            ];
+            const scoringPlayers = allPlayers.filter(p => eligibleIds.includes(p.id));
+            const nonScoringPlayers = allPlayers.filter(p => !eligibleIds.includes(p.id));
+            return (
+              <div className="text-xs bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+                <p className="font-semibold text-amber-800">Balancer match — per-player points</p>
+                {scoringPlayers.length > 0 && (
+                  <p className="text-green-700">✔ Points count for: {scoringPlayers.map(p => p.name).join(', ')}</p>
+                )}
+                {nonScoringPlayers.length > 0 && (
+                  <p className="text-amber-700">✘ No points for: {nonScoringPlayers.map(p => p.name).join(', ')} (already at max matches)</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Structured set-score entry */}
           <SetScoreEntry onChange={setScoreResult} />

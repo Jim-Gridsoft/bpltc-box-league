@@ -177,6 +177,18 @@ export const fixtures = mysqlTable("fixtures", {
   /** Linked match result once played */
   matchId: int("matchId"),
   status: mysqlEnum("status", ["scheduled", "played", "cancelled"]).default("scheduled").notNull(),
+  /**
+   * When true, this is a balancer fixture added to equalise match counts.
+   * Points are awarded per-player: only players listed in balancerEligiblePlayers
+   * (those who were below the max match count) score points; the others score 0.
+   */
+  isBalancer: boolean("isBalancer").default(false).notNull(),
+  /**
+   * JSON-encoded array of userId numbers who are eligible to score points
+   * in this balancer fixture. NULL on non-balancer fixtures.
+   * Example: "[12, 34]" means users 12 and 34 score normally; the other two score 0.
+   */
+  balancerEligiblePlayers: text("balancerEligiblePlayers"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

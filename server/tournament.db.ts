@@ -414,6 +414,40 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
 
   await db.insert(matches).values(data);
 
+  // Check if this is a balancer fixture and load eligible player IDs
+  let isBalancerFixture = false;
+  let balancerEligibleSet = new Set<number>(); // players who score points in this balancer
+  if (fixtureId) {
+    const fixtureRows = await db
+      .select({ isBalancer: fixtures.isBalancer, balancerEligiblePlayers: fixtures.balancerEligiblePlayers })
+      .from(fixtures)
+      .where(eq(fixtures.id, fixtureId))
+      .limit(1);
+    const fixtureRow = fixtureRows[0];
+    if (fixtureRow) {
+      isBalancerFixture = fixtureRow.isBalancer;
+      if (isBalancerFixture && fixtureRow.balancerEligiblePlayers) {
+        try {
+          const ids: number[] = JSON.parse(fixtureRow.balancerEligiblePlayers);
+          balancerEligibleSet = new Set(ids);
+        } catch {
+          // malformed JSON — fall back to 0 pts for all
+        }
+      }
+    }
+  }
+
+  /**
+   * Determine how many points a player earns.
+   * - Non-balancer fixture: standard 2/1/0 logic.
+   * - Balancer fixture: standard 2/1/0 only if the player is in balancerEligibleSet;
+   *   otherwise 0 pts (they were already at the max match count).
+   */
+  function calcPts(userId: number, won: boolean, setsWonByThisTeam: number): number {
+    if (isBalancerFixture && !balancerEligibleSet.has(userId)) return 0;
+    return won ? 2 : (setsWonByThisTeam > 0 ? 1 : 0);
+  }
+
   // Award points: 2 for win, 1 for winning at least one set but losing, 0 for losing 2-0
   // Team A: player1 + partner1, Team B: player2 + partner2
   const teamAWon = data.winner === "A";
@@ -434,9 +468,6 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
     return { teamA: a, teamB: b };
   }
   const setsWon = countSetsWon(data.score ?? null);
-  // Points for each team: 2=match win, 1=won ≥1 set but lost match, 0=lost 2-0
-  const teamAPts = teamAWon ? 2 : (setsWon.teamA > 0 ? 1 : 0);
-  const teamBPts = !teamAWon ? 2 : (setsWon.teamB > 0 ? 1 : 0);
 
   const teamA = [data.player1Id, data.partner1Id];
   const teamB = [data.player2Id, data.partner2Id];
@@ -448,7 +479,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
       .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
       .limit(1);
     if (entrant[0]) {
-      const pts = teamAPts;
+      const pts = calcPts(userId, teamAWon, setsWon.teamA);
       await db
         .update(seasonEntrants)
         .set({
@@ -468,7 +499,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
       .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
       .limit(1);
     if (entrant[0]) {
-      const pts = teamBPts;
+      const pts = calcPts(userId, !teamAWon, setsWon.teamB);
       await db
         .update(seasonEntrants)
         .set({
@@ -477,7 +508,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesWon: entrant[0].matchesWon + (teamAWon ? 0 : 1),
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon); // teamB won if !teamAWon
+      await upsertYearPoints(userId, year, pts, !teamAWon);
     }
   }
 
@@ -960,21 +991,26 @@ export async function autoCreateBoxes(
 }
 
 /**
- * Generate a round-robin fixture schedule for all boxes in a season.
- * Uses the "circle method" to produce a balanced schedule where every pair
- * of players meets exactly once as opponents, with rotating partners.
+ * Generate a balanced doubles fixture schedule for all boxes in a season.
  *
- * For a box of N players (N must be even):
- *   - Each round has N/2 matches (N/4 doubles matches)
- *   - Total rounds = N - 1
+ * Algorithm:
+ *   Phase 1 — Greedy unique scheduling:
+ *     Generate every possible doubles fixture (C(n,4) × 3 team splits).
+ *     Assign fixtures to rounds greedily, always prioritising players with
+ *     the fewest matches so far. Stop when every player has played (n-1) matches.
  *
- * Returns the total number of fixtures created.
+ *   Phase 2 — Balancer pass:
+ *     If any players still have fewer matches than the maximum after Phase 1,
+ *     add extra fixtures flagged as `isBalancer = true`. Balancer matches are
+ *     played normally but award 0 points to all four players. This ensures
+ *     every player in the box plays exactly the same number of matches.
+ *
+ * Result: every player plays the same number of matches regardless of box size.
  */
 export async function generateFixtures(seasonId: number): Promise<{ totalFixtures: number; boxCount: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Get all boxes for the season
   const seasonBoxes = await db
     .select()
     .from(boxes)
@@ -987,7 +1023,6 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
   let totalFixtures = 0;
 
   for (const box of seasonBoxes) {
-    // Get all members of this box with their user IDs
     const members = await db
       .select({
         entrantId: boxMembers.seasonEntrantId,
@@ -999,54 +1034,26 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
       .where(eq(boxMembers.boxId, box.id));
 
     const playerIds = members.map((m) => m.userId).filter((id): id is number => id !== null);
+    if (playerIds.length < 4) continue;
 
-    if (playerIds.length < 4) continue; // Need at least 4 for doubles
-
-    // Delete existing fixtures for this box
     await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
 
-    // Pad to even number if needed
-    const players = [...playerIds];
-    if (players.length % 2 !== 0) {
-      players.push(-1); // bye placeholder
-    }
-
-    const n = players.length;
-    const fixtureRows: InsertFixture[] = [];
-
-    // Circle method: fix players[0], rotate the rest
-    for (let round = 0; round < n - 1; round++) {
-      // Build the round pairings using the circle method
-      const roundPlayers = [players[0], ...players.slice(1).slice(round).concat(players.slice(1).slice(0, round))];
-
-      // Pair them up: (0,n-1), (1,n-2), (2,n-3)...
-      const pairs: [number, number][] = [];
-      for (let i = 0; i < n / 2; i++) {
-        const p1 = roundPlayers[i];
-        const p2 = roundPlayers[n - 1 - i];
-        if (p1 !== -1 && p2 !== -1) {
-          pairs.push([p1, p2]);
-        }
-      }
-
-      // Group pairs into doubles matches: pair[0] vs pair[1], pair[2] vs pair[3], etc.
-      for (let m = 0; m + 1 < pairs.length; m += 2) {
-        const teamA = pairs[m];
-        const teamB = pairs[m + 1];
-        if (teamA && teamB) {
-          fixtureRows.push({
-            boxId: box.id,
-            seasonId,
-            round: round + 1,
-            teamAPlayer1: teamA[0],
-            teamAPlayer2: teamA[1],
-            teamBPlayer1: teamB[0],
-            teamBPlayer2: teamB[1],
-            status: "scheduled",
-          });
-        }
-      }
-    }
+    const scheduled = buildBalancedSchedule(playerIds);
+    const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
+      boxId: box.id,
+      seasonId,
+      round: f.round,
+      teamAPlayer1: f.teamA[0],
+      teamAPlayer2: f.teamA[1],
+      teamBPlayer1: f.teamB[0],
+      teamBPlayer2: f.teamB[1],
+      status: "scheduled" as const,
+      isBalancer: f.isBalancer,
+      // Persist eligible player IDs as a JSON string (null for non-balancer fixtures)
+      balancerEligiblePlayers: f.isBalancer
+        ? JSON.stringify(f.balancerEligiblePlayers)
+        : null,
+    }));
 
     if (fixtureRows.length > 0) {
       await db.insert(fixtures).values(fixtureRows);
@@ -1055,6 +1062,130 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
   }
 
   return { totalFixtures, boxCount: seasonBoxes.length };
+}
+
+// ── Balanced schedule builder (pure function, no DB access) ───────────────────
+
+interface ScheduledFixture {
+  teamA: [number, number];
+  teamB: [number, number];
+  round: number;
+  isBalancer: boolean;
+  /**
+   * For balancer fixtures: the subset of the four player IDs who were below
+   * the maximum match count at the time the fixture was created.
+   * Only these players score points when the match is reported.
+   * Empty array means all four were already at max (0 pts for everyone).
+   */
+  balancerEligiblePlayers: number[];
+}
+
+/**
+ * Build a balanced doubles schedule for a set of player IDs.
+ * Every player will play exactly the same number of matches.
+ * Balancer fixtures (isBalancer=true) are added at the end if needed.
+ */
+export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
+  const n = playerIds.length;
+  if (n < 4) return [];
+
+  const target = n - 1; // target matches per player
+
+  // Generate all unique doubles fixtures (C(n,4) × 3 team splits)
+  const allCombos: { teamA: [number, number]; teamB: [number, number] }[] = [];
+  for (let a = 0; a < n; a++)
+  for (let b = a + 1; b < n; b++)
+  for (let c = b + 1; c < n; c++)
+  for (let d = c + 1; d < n; d++) {
+    const four = [playerIds[a], playerIds[b], playerIds[c], playerIds[d]];
+    allCombos.push({ teamA: [four[0], four[1]], teamB: [four[2], four[3]] });
+    allCombos.push({ teamA: [four[0], four[2]], teamB: [four[1], four[3]] });
+    allCombos.push({ teamA: [four[0], four[3]], teamB: [four[1], four[2]] });
+  }
+
+  const matchCount: Record<number, number> = {};
+  playerIds.forEach((p) => (matchCount[p] = 0));
+
+  const scheduled: ScheduledFixture[] = [];
+  let round = 1;
+  const remaining = [...allCombos];
+
+  // ── Phase 1: greedy unique scheduling ──────────────────────────────────────
+  while (remaining.length > 0) {
+    const inRound = new Set<number>();
+
+    // Prioritise fixtures involving players with the fewest matches
+    remaining.sort((a, b) => {
+      const sumA = [...a.teamA, ...a.teamB].reduce((s, p) => s + matchCount[p], 0);
+      const sumB = [...b.teamA, ...b.teamB].reduce((s, p) => s + matchCount[p], 0);
+      return sumA - sumB;
+    });
+
+    const toRemove: number[] = [];
+    for (let i = 0; i < remaining.length; i++) {
+      const f = remaining[i];
+      const involved = [...f.teamA, ...f.teamB];
+      if (involved.some((p) => inRound.has(p))) continue;
+      // Skip if all 4 players are already at or above target
+      if (involved.every((p) => matchCount[p] >= target)) continue;
+
+      involved.forEach((p) => inRound.add(p));
+      scheduled.push({ ...f, round, isBalancer: false, balancerEligiblePlayers: [] });
+      involved.forEach((p) => matchCount[p]++);
+      toRemove.push(i);
+    }
+
+    if (toRemove.length === 0) break;
+    for (let i = toRemove.length - 1; i >= 0; i--) remaining.splice(toRemove[i], 1);
+    round++;
+  }
+
+  // ── Phase 2: balancer pass ──────────────────────────────────────────────────
+  let safetyLimit = 100;
+  while (safetyLimit-- > 0) {
+    const counts = Object.values(matchCount);
+    const maxCount = Math.max(...counts);
+    const minCount = Math.min(...counts);
+    if (maxCount === minCount) break;
+
+    const needMore = playerIds.filter((p) => matchCount[p] < maxCount);
+    if (needMore.length === 0) break;
+
+    // Sort by fewest matches first
+    needMore.sort((a, b) => matchCount[a] - matchCount[b]);
+
+    // Prefer a combo where all 4 players are below max
+    let chosen = allCombos.find((combo) =>
+      [...combo.teamA, ...combo.teamB].every((p) => matchCount[p] < maxCount)
+    );
+
+    // Fall back: combo involving the most-needed player + 3 others below max
+    if (!chosen) {
+      const p = needMore[0];
+      chosen = allCombos.find((combo) => {
+        const involved = [...combo.teamA, ...combo.teamB];
+        return involved.includes(p) && involved.filter((q) => matchCount[q] < maxCount).length >= 3;
+      });
+    }
+
+    // Last resort: any combo involving the most-needed player
+    if (!chosen) {
+      const p = needMore[0];
+      chosen = allCombos.find((combo) => [...combo.teamA, ...combo.teamB].includes(p));
+    }
+
+    if (!chosen) break;
+
+    // Record which players are below max BEFORE incrementing their counts
+    const involved = [...chosen.teamA, ...chosen.teamB];
+    const eligiblePlayers = involved.filter((p) => matchCount[p] < maxCount);
+
+    scheduled.push({ ...chosen, round, isBalancer: true, balancerEligiblePlayers: eligiblePlayers });
+    involved.forEach((p) => matchCount[p]++);
+    round++;
+  }
+
+  return scheduled;
 }
 
 /**
@@ -1308,6 +1439,8 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
       teamAEntrant2: number;
       teamBEntrant1: number;
       teamBEntrant2: number;
+      /** True if this is a balancer fixture — 0 points awarded */
+      isBalancer: boolean;
     }[];
   }[]
 > {
@@ -1383,6 +1516,7 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
         teamAEntrant2: entrantMap.get(f.teamAPlayer2) ?? 0,
         teamBEntrant1: entrantMap.get(f.teamBPlayer1) ?? 0,
         teamBEntrant2: entrantMap.get(f.teamBPlayer2) ?? 0,
+        isBalancer: f.isBalancer,
       })),
     });
   }

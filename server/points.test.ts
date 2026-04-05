@@ -1,15 +1,21 @@
 /**
- * Unit tests for the 2/1/0 points calculation logic.
+ * Unit tests for the 2/1/0 points calculation logic,
+ * including per-player balancer eligibility (Approach A).
  *
  * Points rules:
  *   - 2 pts: match win
  *   - 1 pt:  lost the match but won at least one set
  *   - 0 pts: lost the match 2-0 (won no sets)
+ *
+ * Balancer fixture rules (Approach A):
+ *   - Players in balancerEligiblePlayers score normally (2/1/0)
+ *   - Players NOT in balancerEligiblePlayers always score 0
  */
 
 import { describe, expect, it } from "vitest";
 
-// ── Inline the helper so we can test it in isolation ─────────────────────────
+// ── Inline the helpers so we can test them in isolation ───────────────────────
+
 function countSetsWon(score: string | null): { teamA: number; teamB: number } {
   if (!score) return { teamA: 0, teamB: 0 };
   let a = 0, b = 0;
@@ -31,6 +37,21 @@ function calcPoints(score: string | null, winner: "A" | "B"): { teamA: number; t
   const teamAPts = teamAWon ? 2 : setsWon.teamA > 0 ? 1 : 0;
   const teamBPts = !teamAWon ? 2 : setsWon.teamB > 0 ? 1 : 0;
   return { teamA: teamAPts, teamB: teamBPts };
+}
+
+/**
+ * Per-player point calculation for balancer fixtures.
+ * Mirrors the calcPts() function inside reportMatch.
+ */
+function calcPtsForPlayer(
+  userId: number,
+  won: boolean,
+  setsWonByThisTeam: number,
+  isBalancer: boolean,
+  eligibleIds: number[]
+): number {
+  if (isBalancer && !eligibleIds.includes(userId)) return 0;
+  return won ? 2 : setsWonByThisTeam > 0 ? 1 : 0;
 }
 
 // ── countSetsWon ──────────────────────────────────────────────────────────────
@@ -82,5 +103,62 @@ describe("calcPoints — 2/1/0 system", () => {
 
   it("null score with winner A: winner gets 2, loser gets 0", () => {
     expect(calcPoints(null, "A")).toEqual({ teamA: 2, teamB: 0 });
+  });
+});
+
+// ── calcPtsForPlayer — Approach A balancer eligibility ────────────────────────
+
+describe("calcPtsForPlayer — Approach A balancer eligibility", () => {
+  // Non-balancer fixtures: all players score normally regardless of eligibleIds
+  it("non-balancer: winning player scores 2 pts", () => {
+    expect(calcPtsForPlayer(1, true, 2, false, [])).toBe(2);
+  });
+
+  it("non-balancer: losing player who won a set scores 1 pt", () => {
+    expect(calcPtsForPlayer(2, false, 1, false, [])).toBe(1);
+  });
+
+  it("non-balancer: losing player who won no sets scores 0 pts", () => {
+    expect(calcPtsForPlayer(3, false, 0, false, [])).toBe(0);
+  });
+
+  // Balancer fixtures: eligible players score normally
+  it("balancer: eligible winning player scores 2 pts", () => {
+    expect(calcPtsForPlayer(10, true, 2, true, [10, 11])).toBe(2);
+  });
+
+  it("balancer: eligible losing player who won a set scores 1 pt", () => {
+    expect(calcPtsForPlayer(11, false, 1, true, [10, 11])).toBe(1);
+  });
+
+  it("balancer: eligible losing player who won no sets scores 0 pts", () => {
+    expect(calcPtsForPlayer(11, false, 0, true, [10, 11])).toBe(0);
+  });
+
+  // Balancer fixtures: ineligible players always score 0
+  it("balancer: ineligible winning player scores 0 pts", () => {
+    expect(calcPtsForPlayer(20, true, 2, true, [10, 11])).toBe(0);
+  });
+
+  it("balancer: ineligible losing player who won a set still scores 0 pts", () => {
+    expect(calcPtsForPlayer(20, false, 1, true, [10, 11])).toBe(0);
+  });
+
+  it("balancer: ineligible losing player who won no sets scores 0 pts", () => {
+    expect(calcPtsForPlayer(20, false, 0, true, [10, 11])).toBe(0);
+  });
+
+  // Edge cases
+  it("balancer: empty eligibleIds means all players score 0", () => {
+    expect(calcPtsForPlayer(1, true, 2, true, [])).toBe(0);
+    expect(calcPtsForPlayer(2, false, 1, true, [])).toBe(0);
+  });
+
+  it("balancer: all four players eligible — same as normal fixture", () => {
+    const eligible = [1, 2, 3, 4];
+    expect(calcPtsForPlayer(1, true, 2, true, eligible)).toBe(2);
+    expect(calcPtsForPlayer(2, true, 2, true, eligible)).toBe(2);
+    expect(calcPtsForPlayer(3, false, 1, true, eligible)).toBe(1);
+    expect(calcPtsForPlayer(4, false, 0, true, eligible)).toBe(0);
   });
 });

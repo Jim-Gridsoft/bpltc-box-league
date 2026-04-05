@@ -1,0 +1,1 @@
+ALTER TABLE `fixtures` ADD `isBalancer` boolean DEFAULT false NOT NULL;

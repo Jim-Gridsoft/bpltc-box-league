@@ -210,3 +210,20 @@
 - [x] Admin UI: Fixtures grouped by box name with round labels
 - [x] Admin UI: After result entry, fixture moves from scheduled to completed section
 - [x] Tests: cover adminGetAllFixtures and adminReportMatch procedures (44/44 passing)
+
+## Round 23 — Balanced Fixture Generation
+
+- [ ] Design balanced doubles scheduling algorithm for any box size (4, 5, 6, 7, 8+ players)
+- [ ] Add `isBalancer` boolean column to fixtures schema (non-points-scoring match)
+- [ ] Implement new algorithm in tournament.db.ts replacing the broken circle method
+- [ ] Update UI to show balancer matches with a visual indicator (no points awarded)
+- [ ] Update reportMatch / deleteMatch to skip points for balancer fixtures
+- [ ] Tests: verify equal match counts for boxes of 4, 5, 6, 7, 8 players
+
+## Round 24 — Approach A: Per-Player Point Eligibility in Balancer Fixtures
+
+- [x] Schema: add balancerEligiblePlayers column (JSON array of userIds who score points)
+- [x] Algorithm: populate balancerEligiblePlayers when creating balancer fixtures
+- [x] reportMatch: skip points for players NOT in balancerEligiblePlayers on balancer fixtures
+- [x] UI: update balancer badge/notice to explain which players score and which do not
+- [x] Tests: cover per-player eligibility logic (22 new tests, 55 total passing)
