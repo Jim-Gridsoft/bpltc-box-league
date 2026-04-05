@@ -15,7 +15,7 @@ export default function Admin() {
   // activeTab is now declared above with boxes included
   const [seedCount, setSeedCount] = useState(6);
   const [targetBoxSize, setTargetBoxSize] = useState(6);
-  const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "admins" | "sandbox">("entrants");
+  const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "admins" | "disputes" | "sandbox">("entrants");
   const [userSearch, setUserSearch] = useState("");
   const [confirmRevokeId, setConfirmRevokeId] = useState<number | null>(null);
   const [confirmPromoteId, setConfirmPromoteId] = useState<number | null>(null);
@@ -201,14 +201,14 @@ export default function Admin() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-             {(["entrants", "boxes", "matches", "seasons", "admins", "sandbox"] as const).map((tab) => (
+             {(["entrants", "boxes", "matches", "seasons", "admins", "disputes", "sandbox"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
                 activeTab === tab
                   ? tab === "sandbox" ? "bg-amber-500 shadow-sm text-white" : "bg-white shadow-sm text-[#1b4332]"
                   : tab === "sandbox" ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
               }`}>
-              {tab === "sandbox" ? "🧪 Sandbox" : tab === "boxes" ? "📦 Boxes" : tab === "admins" ? "🔐 Admins" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "sandbox" ? "🧪 Sandbox" : tab === "boxes" ? "📦 Boxes" : tab === "admins" ? "🔐 Admins" : tab === "disputes" ? "⚠ Disputes" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -381,21 +381,7 @@ export default function Admin() {
         {/* Seasons tab */}
         {activeTab === "seasons" && (
           <div className="space-y-6">
-            {activeSeason && (
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <h2 className="font-serif text-xl font-bold text-[#1b4332] mb-4">Update Season Status</h2>
-                <p className="text-sm text-gray-500 mb-4">Current status: <strong className="capitalize">{activeSeason.status}</strong></p>
-                <div className="flex flex-wrap gap-2">
-                  {(["upcoming", "registration", "active", "completed"] as const).map((status) => (
-                    <button key={status} onClick={() => updateStatusMutation.mutate({ seasonId: activeSeason.id, status })}
-                      disabled={activeSeason.status === status || updateStatusMutation.isPending}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors disabled:opacity-40 ${activeSeason.status === status ? "bg-[#1b4332] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
-                      {status}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center gap-2 mb-6">
@@ -474,12 +460,16 @@ export default function Admin() {
                           </p>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
-                            s.status === "active" ? "bg-green-100 text-green-700" :
-                            s.status === "registration" ? "bg-blue-100 text-blue-700" :
-                            s.status === "completed" ? "bg-gray-100 text-gray-600" :
-                            "bg-amber-100 text-amber-700"
-                          }`}>{s.status}</span>
+                          <select
+                            value={s.status}
+                            onChange={(e) => updateStatusMutation.mutate({ seasonId: s.id, status: e.target.value as "upcoming" | "registration" | "active" | "completed" })}
+                            disabled={updateStatusMutation.isPending}
+                            className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-medium capitalize focus:outline-none focus:ring-2 focus:ring-[#1b4332] bg-white"
+                          >
+                            {(["upcoming", "registration", "active", "completed"] as const).map((st) => (
+                              <option key={st} value={st}>{st}</option>
+                            ))}
+                          </select>
                           {confirmDeleteSeasonId === s.id ? null : (
                             <button
                               onClick={() => setConfirmDeleteSeasonId(s.id)}
@@ -656,6 +646,12 @@ export default function Admin() {
           </div>
         )}
 
+
+        {/* Disputes tab */}
+        {activeTab === "disputes" && (
+          <DisputesTab />
+        )}
+
         {/* Sandbox tab */}
         {activeTab === "sandbox" && (
           <div className="space-y-6">
@@ -813,6 +809,112 @@ function BoxMatchesRow({
               ))}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DisputesTab() {
+  const { data: disputes, isLoading } = trpc.disputes.list.useQuery();
+  const utils = trpc.useUtils();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [adminNotes, setAdminNotes] = useState<Record<number, string>>({});
+
+  const updateStatusMutation = trpc.disputes.updateStatus.useMutation({
+    onSuccess: () => {
+      toast.success("Dispute updated.");
+      utils.disputes.list.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const statusColors: Record<string, string> = {
+    open: "bg-amber-100 text-amber-700",
+    resolved: "bg-green-100 text-green-700",
+    closed: "bg-gray-100 text-gray-600",
+  };
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+        <span className="text-lg">⚠</span>
+        <h2 className="font-serif text-xl font-bold text-[#1b4332]">Dispute & Contact Messages</h2>
+        <span className="ml-auto text-xs text-gray-400">
+          {disputes?.filter((d) => d.status === "open").length ?? 0} open
+        </span>
+      </div>
+      {isLoading ? (
+        <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
+      ) : !disputes || disputes.length === 0 ? (
+        <div className="p-8 text-center text-gray-400">No disputes or contact messages submitted yet.</div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {disputes.map((d) => (
+            <div key={d.id}>
+              <div
+                className="px-6 py-4 flex items-start justify-between gap-4 cursor-pointer hover:bg-gray-50"
+                onClick={() => setExpandedId(expandedId === d.id ? null : d.id)}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${statusColors[d.status] ?? "bg-gray-100 text-gray-600"}`}>
+                      {d.status}
+                    </span>
+                    <span className="text-xs text-gray-400">{new Date(d.createdAt).toLocaleDateString("en-GB")}</span>
+                  </div>
+                  <p className="font-medium text-gray-800 truncate">{d.subject}</p>
+                  <p className="text-xs text-gray-400">{d.userName ?? "Unknown user"} · {d.userEmail ?? ""}</p>
+                </div>
+                {expandedId === d.id ? <ChevronUp className="w-4 h-4 text-gray-400 mt-1 shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 mt-1 shrink-0" />}
+              </div>
+              {expandedId === d.id && (
+                <div className="px-6 pb-5 bg-gray-50 border-t border-gray-100">
+                  <div className="pt-4 space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Message</p>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{d.description}</p>
+                    </div>
+                    {(d.matchId || d.fixtureId) && (
+                      <div className="text-xs text-gray-400 space-x-4">
+                        {d.matchId && <span>Match ID: {d.matchId}</span>}
+                        {d.fixtureId && <span>Fixture ID: {d.fixtureId}</span>}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Admin Notes</p>
+                      <textarea
+                        rows={3}
+                        value={adminNotes[d.id] ?? d.adminNotes ?? ""}
+                        onChange={(e) => setAdminNotes((prev) => ({ ...prev, [d.id]: e.target.value }))}
+                        placeholder="Add internal notes…"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332] resize-none"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      {(["open", "resolved", "closed"] as const).map((status) => (
+                        <button
+                          key={status}
+                          onClick={() => updateStatusMutation.mutate({
+                            disputeId: d.id,
+                            status,
+                            adminNotes: adminNotes[d.id] ?? d.adminNotes ?? undefined,
+                          })}
+                          disabled={d.status === status || updateStatusMutation.isPending}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors disabled:opacity-40 ${
+                            d.status === status ? "bg-[#1b4332] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                      {updateStatusMutation.isPending && <Loader2 className="w-4 h-4 animate-spin text-[#1b4332]" />}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>

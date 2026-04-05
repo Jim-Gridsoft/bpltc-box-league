@@ -163,3 +163,10 @@
 - [x] Frontend: Add "Contact Admin" link in TournamentNav for authenticated users
 - [x] Frontend: Success confirmation screen after submission
 - [x] Tests: cover disputes procedures (28/28 pass)
+
+## Round 18 — Admin Panel Extensions
+
+- [x] Admin: Disputes tab — list all disputes with status badge, admin notes field, resolve/close button
+- [x] Admin: Matches tab — list all season match results with delete button (auto-reverses points)
+- [x] Admin: Season status dropdown — inline status change on each season card (upcoming/registration/active/completed)
+- [x] Tests: verify new admin procedures (28/28 pass)
