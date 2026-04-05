@@ -147,3 +147,19 @@
 - [x] TournamentNav: hide Admin link for non-admin users (check user.role === 'admin')
 - [x] Admin page: redirect non-admin users to home with an error message
 - [x] Tests: verify admin-only guard
+
+## Round 16 — Admin User Management
+
+- [x] Backend: getAllUsers query (id, name, email, role, createdAt) — admin only
+- [x] Backend: setUserRole mutation (promote/demote) — admin only, cannot demote self
+- [x] Admin UI: new "Admins" tab showing all current admins with revoke button
+- [x] Admin UI: search/select any registered user to promote to admin
+- [x] Tests: cover setUserRole procedure
+
+## Round 17 — Contact Administrator / Dispute Resolution
+
+- [x] Backend: disputes.submit procedure — stores dispute in DB + notifyOwner notification
+- [x] Frontend: /contact-admin page with dispute form (subject, description, optional match/fixture reference)
+- [x] Frontend: Add "Contact Admin" link in TournamentNav for authenticated users
+- [x] Frontend: Success confirmation screen after submission
+- [x] Tests: cover disputes procedures (28/28 pass)

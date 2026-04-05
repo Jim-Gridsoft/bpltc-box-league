@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, disputes, InsertDispute } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -90,3 +90,76 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // TODO: add feature queries here as your schema grows.
+
+export async function getAllUsers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+      lastSignedIn: users.lastSignedIn,
+    })
+    .from(users)
+    .orderBy(users.createdAt);
+}
+
+export async function setUserRole(userId: number, role: "user" | "admin") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+export async function createDispute(data: InsertDispute) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(disputes).values(data);
+}
+
+export async function getAllDisputes() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: disputes.id,
+      userId: disputes.userId,
+      subject: disputes.subject,
+      description: disputes.description,
+      matchId: disputes.matchId,
+      fixtureId: disputes.fixtureId,
+      status: disputes.status,
+      adminNotes: disputes.adminNotes,
+      createdAt: disputes.createdAt,
+      userName: users.name,
+      userEmail: users.email,
+    })
+    .from(disputes)
+    .leftJoin(users, eq(disputes.userId, users.id))
+    .orderBy(desc(disputes.createdAt));
+}
+
+export async function updateDisputeStatus(
+  disputeId: number,
+  status: "open" | "resolved" | "closed",
+  adminNotes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(disputes)
+    .set({ status, ...(adminNotes !== undefined ? { adminNotes } : {}) })
+    .where(eq(disputes.id, disputeId));
+}
+
+export async function getAdminEmails() {
+  const db = await getDb();
+  if (!db) return [];
+  const admins = await db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.role, "admin"));
+  return admins.filter((a) => !!a.email) as { email: string; name: string | null }[];
+}

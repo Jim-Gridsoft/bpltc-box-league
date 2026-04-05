@@ -198,3 +198,23 @@ export const matchRequests = mysqlTable("match_requests", {
 
 export type MatchRequest = typeof matchRequests.$inferSelect;
 export type InsertMatchRequest = typeof matchRequests.$inferInsert;
+
+// ── Disputes ───────────────────────────────────────────────────────────────────
+// Submitted by players for dispute resolution or admin contact.
+export const disputes = mysqlTable("disputes", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  subject: varchar("subject", { length: 256 }).notNull(),
+  description: text("description").notNull(),
+  /** Optional reference to a match ID */
+  matchId: int("matchId"),
+  /** Optional reference to a fixture ID */
+  fixtureId: int("fixtureId"),
+  status: mysqlEnum("status", ["open", "resolved", "closed"]).default("open").notNull(),
+  adminNotes: text("adminNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Dispute = typeof disputes.$inferSelect;
+export type InsertDispute = typeof disputes.$inferInsert;

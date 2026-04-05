@@ -15,7 +15,24 @@ export default function Admin() {
   // activeTab is now declared above with boxes included
   const [seedCount, setSeedCount] = useState(6);
   const [targetBoxSize, setTargetBoxSize] = useState(6);
-  const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "sandbox">("entrants");
+  const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "admins" | "sandbox">("entrants");
+  const [userSearch, setUserSearch] = useState("");
+  const [confirmRevokeId, setConfirmRevokeId] = useState<number | null>(null);
+  const [confirmPromoteId, setConfirmPromoteId] = useState<number | null>(null);
+
+  const { data: allUsers } = trpc.adminUsers.list.useQuery(
+    undefined,
+    { enabled: activeTab === "admins" && user?.role === "admin" }
+  );
+  const setRoleMutation = trpc.adminUsers.setRole.useMutation({
+    onSuccess: () => {
+      toast.success("User role updated.");
+      utils.adminUsers.list.invalidate();
+      setConfirmRevokeId(null);
+      setConfirmPromoteId(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   // Create season form
   const [newSeasonName, setNewSeasonName] = useState("");
@@ -184,14 +201,14 @@ export default function Admin() {
 
         {/* Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-             {(["entrants", "boxes", "matches", "seasons", "sandbox"] as const).map((tab) => (
+             {(["entrants", "boxes", "matches", "seasons", "admins", "sandbox"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
                 activeTab === tab
                   ? tab === "sandbox" ? "bg-amber-500 shadow-sm text-white" : "bg-white shadow-sm text-[#1b4332]"
                   : tab === "sandbox" ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
               }`}>
-              {tab === "sandbox" ? "🧪 Sandbox" : tab === "boxes" ? "📦 Boxes" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "sandbox" ? "🧪 Sandbox" : tab === "boxes" ? "📦 Boxes" : tab === "admins" ? "🔐 Admins" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -509,6 +526,136 @@ export default function Admin() {
             </div>
           </div>
         )}
+        {/* Admins tab */}
+        {activeTab === "admins" && (
+          <div className="space-y-6">
+            {/* Current admins */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-[#c9a84c]" />
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Current Administrators</h2>
+                <span className="ml-auto text-xs text-gray-400">
+                  {allUsers?.filter((u) => u.role === "admin").length ?? 0} admin{allUsers?.filter((u) => u.role === "admin").length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {!allUsers ? (
+                <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {allUsers.filter((u) => u.role === "admin").map((u) => (
+                    <div key={u.id} className="px-6 py-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{u.name ?? "(no name)"}</p>
+                        <p className="text-xs text-gray-400">{u.email ?? "(no email)"}</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs bg-[#1b4332] text-white px-2.5 py-1 rounded-full font-medium">Admin</span>
+                        {u.id !== user?.id && (
+                          confirmRevokeId === u.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-red-600 font-medium">Revoke admin?</span>
+                              <button
+                                onClick={() => setRoleMutation.mutate({ userId: u.id, role: "user" })}
+                                disabled={setRoleMutation.isPending}
+                                className="text-xs bg-red-600 text-white px-3 py-1 rounded font-medium hover:bg-red-700 transition-colors disabled:opacity-50"
+                              >
+                                {setRoleMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Confirm"}
+                              </button>
+                              <button onClick={() => setConfirmRevokeId(null)} className="text-xs text-gray-500 hover:text-gray-700">
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmRevokeId(u.id)}
+                              className="text-xs bg-red-100 text-red-600 px-3 py-1 rounded font-medium hover:bg-red-200 transition-colors"
+                            >
+                              Revoke Admin
+                            </button>
+                          )
+                        )}
+                        {u.id === user?.id && (
+                          <span className="text-xs text-gray-400 italic">You</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Promote a user */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Users className="w-5 h-5 text-[#c9a84c]" />
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Promote a User to Admin</h2>
+              </div>
+              <div className="p-6">
+                <p className="text-sm text-gray-500 mb-4">
+                  Search for a registered user below and grant them admin access. They will immediately be able to access the Admin panel.
+                </p>
+                <input
+                  type="text"
+                  placeholder="Search by name or email…"
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                />
+                {!allUsers ? (
+                  <div className="text-center"><Loader2 className="w-5 h-5 animate-spin text-[#1b4332] mx-auto" /></div>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {allUsers
+                      .filter((u) => u.role === "user")
+                      .filter((u) => {
+                        const q = userSearch.toLowerCase();
+                        return !q || (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
+                      })
+                      .map((u) => (
+                        <div key={u.id} className="flex items-center justify-between gap-4 px-4 py-3 bg-gray-50 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{u.name ?? "(no name)"}</p>
+                            <p className="text-xs text-gray-400">{u.email ?? "(no email)"}</p>
+                          </div>
+                          {confirmPromoteId === u.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-[#1b4332] font-medium">Make admin?</span>
+                              <button
+                                onClick={() => setRoleMutation.mutate({ userId: u.id, role: "admin" })}
+                                disabled={setRoleMutation.isPending}
+                                className="text-xs bg-[#1b4332] text-white px-3 py-1 rounded font-medium hover:bg-[#2d6a4f] transition-colors disabled:opacity-50"
+                              >
+                                {setRoleMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin inline" /> : "Confirm"}
+                              </button>
+                              <button onClick={() => setConfirmPromoteId(null)} className="text-xs text-gray-500 hover:text-gray-700">
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmPromoteId(u.id)}
+                              className="text-xs bg-[#1b4332] text-white px-3 py-1 rounded font-medium hover:bg-[#2d6a4f] transition-colors"
+                            >
+                              Make Admin
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    {allUsers.filter((u) => u.role === "user").filter((u) => {
+                      const q = userSearch.toLowerCase();
+                      return !q || (u.name ?? "").toLowerCase().includes(q) || (u.email ?? "").toLowerCase().includes(q);
+                    }).length === 0 && (
+                      <p className="text-sm text-gray-400 text-center py-4">
+                        {userSearch ? "No matching users found." : "No regular users registered yet."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Sandbox tab */}
         {activeTab === "sandbox" && (
           <div className="space-y-6">

@@ -10,6 +10,7 @@ import Leaderboard from "./pages/Leaderboard";
 import Admin from "./pages/Admin";
 import PartnerFinder from "./pages/PartnerFinder";
 import Results from "./pages/Results";
+import ContactAdmin from "./pages/ContactAdmin";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/admin" component={Admin} />
       <Route path="/partners" component={PartnerFinder} />
       <Route path="/results" component={Results} />
+      <Route path="/contact-admin" component={ContactAdmin} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
