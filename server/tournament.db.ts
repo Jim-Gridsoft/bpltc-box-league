@@ -1,4 +1,4 @@
-import { eq, desc, and, asc } from "drizzle-orm";
+import { eq, desc, and, asc, like, or } from "drizzle-orm";
 import { getDb } from "./db";
 import {
   seasons,
@@ -558,4 +558,179 @@ export async function respondToMatchRequest(
         .where(eq(partnerSlots.id, rows[0].slotId));
     }
   }
+}
+
+// ── Sandbox / Demo Helpers ────────────────────────────────────────────────────
+
+const SANDBOX_FIRST_NAMES = [
+  "Alex", "Ben", "Chris", "Dan", "Ed", "Finn", "George", "Harry",
+  "Ian", "Jack", "Karl", "Liam", "Matt", "Nick", "Oliver", "Pete",
+  "Quentin", "Rob", "Sam", "Tom", "Umar", "Vic", "Will", "Xander",
+  "Yusuf", "Zach",
+];
+const SANDBOX_LAST_NAMES = [
+  "Smith", "Jones", "Taylor", "Brown", "Wilson", "Evans", "Thomas",
+  "Roberts", "Johnson", "Walker", "Wright", "Thompson", "White", "Hughes",
+  "Edwards", "Green", "Hall", "Lewis", "Harris", "Clarke",
+];
+
+function randomName() {
+  const f = SANDBOX_FIRST_NAMES[Math.floor(Math.random() * SANDBOX_FIRST_NAMES.length)];
+  const l = SANDBOX_LAST_NAMES[Math.floor(Math.random() * SANDBOX_LAST_NAMES.length)];
+  return `${f} ${l}`;
+}
+
+/**
+ * Immediately register the real user for a season and mark them as paid —
+ * no Stripe involved. Used in sandbox/demo mode.
+ */
+export async function sandboxRegisterAndPay(
+  userId: number,
+  seasonId: number,
+  displayName: string,
+  abilityRating: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Upsert: if already registered just mark paid
+  const existing = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, seasonId)))
+    .limit(1);
+
+  if (existing[0]) {
+    await db
+      .update(seasonEntrants)
+      .set({ paid: true, stripePaymentIntentId: "sandbox-free" })
+      .where(eq(seasonEntrants.id, existing[0].id));
+    return existing[0];
+  }
+
+  await db.insert(seasonEntrants).values({
+    seasonId,
+    userId,
+    displayName,
+    abilityRating,
+    paid: true,
+    stripePaymentIntentId: "sandbox-free",
+  });
+
+  const rows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, seasonId)))
+    .limit(1);
+  return rows[0];
+}
+
+/**
+ * Create N synthetic test-player users and register them as paid entrants
+ * for the given season. Test users have openId prefixed with "sandbox-test-".
+ */
+export async function sandboxSeedPlayers(seasonId: number, count: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const created: { displayName: string; abilityRating: number }[] = [];
+
+  for (let i = 0; i < count; i++) {
+    const displayName = randomName();
+    const abilityRating = Math.floor(Math.random() * 5) + 1;
+    const openId = `sandbox-test-${seasonId}-${Date.now()}-${i}`;
+
+    // Create or reuse a synthetic user row
+    await db.insert(users).values({
+      openId,
+      name: displayName,
+      email: `${openId}@sandbox.bpltc.test`,
+      loginMethod: "sandbox",
+      role: "user",
+    }).onDuplicateKeyUpdate({ set: { name: displayName } });
+
+    const userRows = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+    const user = userRows[0];
+    if (!user) continue;
+
+    // Check not already registered
+    const existing = await db
+      .select()
+      .from(seasonEntrants)
+      .where(and(eq(seasonEntrants.userId, user.id), eq(seasonEntrants.seasonId, seasonId)))
+      .limit(1);
+
+    if (!existing[0]) {
+      await db.insert(seasonEntrants).values({
+        seasonId,
+        userId: user.id,
+        displayName,
+        abilityRating,
+        paid: true,
+        stripePaymentIntentId: "sandbox-seeded",
+      });
+    }
+
+    created.push({ displayName, abilityRating });
+  }
+
+  return created;
+}
+
+/**
+ * Delete all sandbox test data for a season:
+ * - All matches reported by sandbox users
+ * - All season_entrant rows for sandbox users
+ * - All sandbox user rows (openId starts with "sandbox-test-")
+ * Does NOT delete real user registrations.
+ */
+export async function sandboxResetSeason(seasonId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Find all sandbox user IDs for this season
+  const sandboxUsers = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(like(users.openId, `sandbox-test-${seasonId}-%`));
+
+  const sandboxUserIds = sandboxUsers.map((u) => u.id);
+
+  if (sandboxUserIds.length > 0) {
+    // Delete matches involving sandbox users
+    for (const uid of sandboxUserIds) {
+      await db.delete(matches).where(
+        or(
+          eq(matches.player1Id, uid),
+          eq(matches.partner1Id, uid),
+          eq(matches.player2Id, uid),
+          eq(matches.partner2Id, uid)
+        )
+      );
+      // Delete partner slots
+      await db.delete(partnerSlots).where(eq(partnerSlots.userId, uid));
+      // Delete match requests
+      await db.delete(matchRequests).where(
+        or(eq(matchRequests.fromUserId, uid), eq(matchRequests.toUserId, uid))
+      );
+      // Delete season entrant rows
+      await db.delete(seasonEntrants).where(
+        and(eq(seasonEntrants.userId, uid), eq(seasonEntrants.seasonId, seasonId))
+      );
+      // Delete the synthetic user
+      await db.delete(users).where(eq(users.id, uid));
+    }
+  }
+
+  // Also reset the real user's sandbox-free registration if present
+  await db
+    .delete(seasonEntrants)
+    .where(
+      and(
+        eq(seasonEntrants.seasonId, seasonId),
+        eq(seasonEntrants.stripePaymentIntentId, "sandbox-free")
+      )
+    );
+
+  return { deletedUsers: sandboxUserIds.length };
 }

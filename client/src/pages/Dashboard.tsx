@@ -45,6 +45,10 @@ export default function Dashboard() {
     onSuccess: (data: { url: string | null }) => { if (data.url) { toast.info("Redirecting to payment..."); window.open(data.url, "_blank"); } },
     onError: (e) => toast.error(e.message),
   });
+  const sandboxRegisterMutation = trpc.tournament.sandboxRegister.useMutation({
+    onSuccess: () => { toast.success("Demo registration complete! You are now a paid entrant."); utils.tournament.myEntry.invalidate(); },
+    onError: (e) => toast.error(e.message),
+  });
   const reportMatchMutation = trpc.tournament.reportMatch.useMutation({
     onSuccess: () => {
       toast.success("Match reported!");
@@ -114,6 +118,15 @@ export default function Dashboard() {
                 {registerMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 Register for this Season — £20
               </button>
+              <div className="mt-3 pt-3 border-t border-dashed border-amber-200">
+                <p className="text-xs text-amber-600 font-medium mb-2">🧪 Demo Mode — skip payment for testing</p>
+                <button onClick={() => activeSeason && sandboxRegisterMutation.mutate({ seasonId: activeSeason.id, displayName: regName || "Demo Player", abilityRating: regAbility })}
+                  disabled={sandboxRegisterMutation.isPending}
+                  className="w-full bg-amber-500 text-white py-2 rounded-lg font-semibold text-sm hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                  {sandboxRegisterMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Register Free (Demo — No Payment)
+                </button>
+              </div>
             </div>
           </div>
         ) : !myEntry.paid ? (

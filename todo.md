@@ -54,3 +54,13 @@
 - [ ] PartnerFinder page: update copy to reference box matches and seasonal context
 - [ ] Admin page: update season management, box management, and entrant management copy
 - [ ] TournamentNav: update site title and nav labels
+
+## Round 5 — Sandbox / Demo Mode
+
+- [ ] Backend: sandboxRegister procedure (free registration, marks paid=true, no Stripe)
+- [ ] Backend: sandboxSeedPlayers procedure (bulk create N test players in a season)
+- [ ] Backend: sandboxReset procedure (wipe all test data for a season)
+- [ ] Frontend: Demo Mode banner visible on all pages
+- [ ] Frontend: Dashboard — "Register Free (Demo)" button alongside normal Stripe button
+- [ ] Frontend: Admin — "Seed Test Players" panel with count selector and reset button
+- [ ] Tests updated for new sandbox procedures

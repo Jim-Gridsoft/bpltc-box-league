@@ -12,7 +12,8 @@ export default function Admin() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [expandedEntrant, setExpandedEntrant] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"entrants" | "matches" | "seasons">("entrants");
+  const [activeTab, setActiveTab] = useState<"entrants" | "matches" | "seasons" | "sandbox">("entrants");
+  const [seedCount, setSeedCount] = useState(6);
 
   // Create season form
   const [newSeasonName, setNewSeasonName] = useState("");
@@ -58,6 +59,23 @@ export default function Admin() {
       toast.success("Season created!");
       setNewSeasonName(""); setNewSeasonStart(""); setNewSeasonEnd(""); setNewSeasonDeadline("");
       utils.tournament.seasons.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const sandboxSeedMutation = trpc.tournament.sandboxSeedPlayers.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.created} test players added to the season.`);
+      utils.tournament.adminSeasonEntrants.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const sandboxResetMutation = trpc.tournament.sandboxReset.useMutation({
+    onSuccess: () => {
+      toast.success("Sandbox data reset. All test players removed.");
+      utils.tournament.adminSeasonEntrants.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
     },
     onError: (e: { message: string }) => toast.error(e.message),
   });
@@ -133,11 +151,15 @@ export default function Admin() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-          {(["entrants", "matches", "seasons"] as const).map((tab) => (
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+          {(["entrants", "matches", "seasons", "sandbox"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${activeTab === tab ? "bg-white shadow-sm text-[#1b4332]" : "text-gray-500 hover:text-gray-700"}`}>
-              {tab}
+              className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
+                activeTab === tab
+                  ? tab === "sandbox" ? "bg-amber-500 shadow-sm text-white" : "bg-white shadow-sm text-[#1b4332]"
+                  : tab === "sandbox" ? "text-amber-600 hover:text-amber-700" : "text-gray-500 hover:text-gray-700"
+              }`}>
+              {tab === "sandbox" ? "🧪 Sandbox" : tab}
             </button>
           ))}
         </div>
@@ -329,6 +351,69 @@ export default function Admin() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        )}
+        {/* Sandbox tab */}
+        {activeTab === "sandbox" && (
+          <div className="space-y-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-2xl">🧪</span>
+                <h2 className="font-serif text-xl font-bold text-amber-800">Sandbox / Demo Mode</h2>
+              </div>
+              <p className="text-sm text-amber-700 mb-1">
+                Use these tools to test the full box league flow without real payments. All test data is clearly marked and can be reset at any time.
+              </p>
+              <p className="text-xs text-amber-600">
+                Test players are created with synthetic accounts and marked as paid instantly. They will appear on the leaderboard and in boxes alongside real players during testing.
+              </p>
+            </div>
+
+            {/* Seed players */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <h3 className="font-serif text-lg font-bold text-[#1b4332] mb-4">Add Test Players</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Instantly add synthetic paid players to the selected season. Each test player gets a random ability rating (1–5) and a generated name.
+              </p>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Number of players to add</label>
+                  <select value={seedCount} onChange={(e) => setSeedCount(Number(e.target.value))}
+                    className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
+                    {[2, 4, 6, 8, 10, 12, 16, 20, 24].map((n) => (
+                      <option key={n} value={n}>{n} players</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => activeSeason && sandboxSeedMutation.mutate({ seasonId: activeSeason.id, count: seedCount })}
+                  disabled={!activeSeason || sandboxSeedMutation.isPending}
+                  className="mt-4 bg-amber-500 text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-amber-600 transition-colors disabled:opacity-50 flex items-center gap-2">
+                  {sandboxSeedMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Add {seedCount} Test Players
+                </button>
+              </div>
+            </div>
+
+            {/* Reset sandbox */}
+            <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+              <h3 className="font-serif text-lg font-bold text-red-700 mb-2">Reset Sandbox Data</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Removes all test players, their match records, partner slots, and match requests from the selected season.
+                Real member registrations and match results are <strong>not affected</strong>.
+              </p>
+              <button
+                onClick={() => {
+                  if (confirm("Remove all sandbox test data from this season? This cannot be undone.")) {
+                    activeSeason && sandboxResetMutation.mutate({ seasonId: activeSeason.id });
+                  }
+                }}
+                disabled={!activeSeason || sandboxResetMutation.isPending}
+                className="bg-red-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                {sandboxResetMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Reset Sandbox Data
+              </button>
             </div>
           </div>
         )}

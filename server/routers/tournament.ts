@@ -33,6 +33,9 @@ import {
   getIncomingRequests,
   getOutgoingRequests,
   respondToMatchRequest,
+  sandboxRegisterAndPay,
+  sandboxSeedPlayers,
+  sandboxResetSeason,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -459,5 +462,61 @@ export const tournamentRouter = router({
     .mutation(async ({ ctx, input }) => {
       await respondToMatchRequest(input.requestId, ctx.user.id, input.status);
       return { success: true };
+    }),
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // SANDBOX / DEMO MODE PROCEDURES
+  // ════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Register the current user for a season and mark them as paid instantly,
+   * bypassing Stripe. Admin-only in production; available to all in sandbox.
+   */
+  sandboxRegister: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        displayName: z.string().min(2).max(128),
+        abilityRating: z.number().int().min(1).max(5),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const season = await getSeasonById(input.seasonId);
+      if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
+      return sandboxRegisterAndPay(
+        ctx.user.id,
+        input.seasonId,
+        input.displayName,
+        input.abilityRating
+      );
+    }),
+
+  /**
+   * Seed N synthetic test players into a season (admin only).
+   * All test players are created as paid entrants with random names and ability ratings.
+   */
+  sandboxSeedPlayers: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        count: z.number().int().min(1).max(50),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const created = await sandboxSeedPlayers(input.seasonId, input.count);
+      return { created: created.length, players: created };
+    }),
+
+  /**
+   * Reset all sandbox test data for a season (admin only).
+   * Removes all synthetic users, their entrant records, matches, and partner data.
+   * Does NOT remove real user registrations.
+   */
+  sandboxReset: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return sandboxResetSeason(input.seasonId);
     }),
 });
