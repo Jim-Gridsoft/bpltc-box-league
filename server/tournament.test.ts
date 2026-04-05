@@ -36,6 +36,18 @@ vi.mock("./tournament.db", () => ({
   getOutgoingRequests: vi.fn().mockResolvedValue([]),
   respondToMatchRequest: vi.fn().mockResolvedValue(undefined),
   getAllFixturesBySeason: vi.fn().mockResolvedValue([]),
+  sandboxResetAndRegenerate: vi.fn().mockResolvedValue({ deletedUsers: 5, totalFixtures: 15, boxCount: 3, balanceSummary: [] }),
+  getFixtureBalanceSummary: vi.fn().mockResolvedValue([]),
+  sandboxRegisterAndPay: vi.fn().mockResolvedValue({ entrant: { id: 1 }, paymentIntent: { client_secret: "pi_test_secret" } }),
+  sandboxSeedPlayers: vi.fn().mockResolvedValue({ created: 5 }),
+  sandboxResetSeason: vi.fn().mockResolvedValue({ deletedUsers: 5 }),
+  autoCreateBoxes: vi.fn().mockResolvedValue({ created: 3 }),
+  generateFixtures: vi.fn().mockResolvedValue({ totalFixtures: 15, boxCount: 3 }),
+  getFixturesByBox: vi.fn().mockResolvedValue([]),
+  getMyFixtures: vi.fn().mockResolvedValue([]),
+  deleteSeason: vi.fn().mockResolvedValue(undefined),
+  endSeason: vi.fn().mockResolvedValue({ promoted: [], relegated: [], stayed: [] }),
+  getAllMatchesBySeason: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock notification helper so tests don't make real HTTP calls
@@ -344,5 +356,41 @@ describe("tournament.adminReportMatch (admin only)", () => {
     const caller = appRouter.createCaller(makeAdminCtx());
     const result = await caller.tournament.adminReportMatch(validInput);
     expect(result).toMatchObject({ id: 1 });
+  });
+});
+
+describe("tournament.sandboxResetAndRegenerate (admin only)", () => {
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.sandboxResetAndRegenerate({ seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.sandboxResetAndRegenerate({ seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("allows admin to reset and regenerate fixtures", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.sandboxResetAndRegenerate({ seasonId: 1 });
+    expect(result).toMatchObject({ deletedUsers: 5, totalFixtures: 15, boxCount: 3 });
+  });
+});
+
+describe("tournament.fixtureBalanceSummary (admin only)", () => {
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.fixtureBalanceSummary({ seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.fixtureBalanceSummary({ seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("allows admin to get fixture balance summary", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.fixtureBalanceSummary({ seasonId: 1 });
+    expect(Array.isArray(result)).toBe(true);
   });
 });

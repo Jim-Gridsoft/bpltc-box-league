@@ -10,6 +10,7 @@ import { serveStatic, setupVite } from "./vite";
 import Stripe from "stripe";
 import { markSeasonEntrantPaid, getSeasonEntrantById } from "../tournament.db";
 import { notifyOwner } from "./notification";
+import { runSchemaHealthCheck } from "../schemaHealthCheck";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -116,6 +117,10 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Non-fatal schema health check — warns in logs if columns are missing
+    runSchemaHealthCheck().catch((e) =>
+      console.warn("[SchemaHealthCheck] Unexpected error:", e)
+    );
   });
 }
 

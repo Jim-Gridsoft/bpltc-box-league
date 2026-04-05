@@ -1523,3 +1523,95 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
 
   return result;
 }
+
+// ── Sandbox Reset + Regenerate ────────────────────────────────────────────────
+
+/**
+ * Reset all sandbox test data for a season AND immediately regenerate fixtures.
+ * Convenience wrapper: sandboxResetSeason → clear boxes → autoCreateBoxes → generateFixtures.
+ * Returns the reset result plus the new fixture generation summary.
+ */
+export async function sandboxResetAndRegenerate(seasonId: number): Promise<{
+  deletedUsers: number;
+  totalFixtures: number;
+  boxCount: number;
+  balanceSummary: { playerId: number; playerName: string; totalMatches: number; balancerMatches: number }[];
+}> {
+  // Step 1: Reset all sandbox test data (removes synthetic users + their records)
+  const resetResult = await sandboxResetSeason(seasonId);
+
+  // Step 2: Clear existing boxes and fixtures for this season
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existingBoxes = await db.select({ id: boxes.id }).from(boxes).where(eq(boxes.seasonId, seasonId));
+  for (const box of existingBoxes) {
+    await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+    await db.delete(boxMembers).where(eq(boxMembers.boxId, box.id));
+  }
+  await db.delete(boxes).where(eq(boxes.seasonId, seasonId));
+
+  // Step 3: Auto-create boxes from remaining paid entrants
+  await autoCreateBoxes(seasonId);
+
+  // Step 4: Generate balanced fixtures
+  const genResult = await generateFixtures(seasonId);
+
+  // Step 5: Build balance summary
+  const summary = await getFixtureBalanceSummary(seasonId);
+
+  return {
+    deletedUsers: resetResult.deletedUsers,
+    totalFixtures: genResult.totalFixtures,
+    boxCount: genResult.boxCount,
+    balanceSummary: summary,
+  };
+}
+
+// ── Fixture Balance Summary ───────────────────────────────────────────────────
+
+/**
+ * Returns a per-player summary of how many fixtures they have been assigned
+ * in a season, broken down by regular vs balancer matches.
+ * Used by the admin to verify the schedule is fair before the season starts.
+ */
+export async function getFixtureBalanceSummary(seasonId: number): Promise<
+  { playerId: number; playerName: string; totalMatches: number; balancerMatches: number }[]
+> {
+  const db = await getDb();
+  if (!db) return [];
+
+  const allFixtures = await db
+    .select()
+    .from(fixtures)
+    .where(eq(fixtures.seasonId, seasonId));
+
+  if (allFixtures.length === 0) return [];
+
+  // Count appearances per player
+  const countMap: Record<number, { total: number; balancer: number }> = {};
+  for (const f of allFixtures) {
+    const players = [f.teamAPlayer1, f.teamAPlayer2, f.teamBPlayer1, f.teamBPlayer2];
+    for (const pid of players) {
+      if (!countMap[pid]) countMap[pid] = { total: 0, balancer: 0 };
+      countMap[pid].total++;
+      if (f.isBalancer) countMap[pid].balancer++;
+    }
+  }
+
+  // Resolve player names
+  const playerIds = Object.keys(countMap).map(Number);
+  const userRows = await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, playerIds));
+  const nameMap = new Map(userRows.map((u) => [u.id, u.name ?? "Unknown"]));
+
+  return playerIds
+    .map((pid) => ({
+      playerId: pid,
+      playerName: nameMap.get(pid) ?? "Unknown",
+      totalMatches: countMap[pid].total,
+      balancerMatches: countMap[pid].balancer,
+    }))
+    .sort((a, b) => a.playerName.localeCompare(b.playerName));
+}

@@ -239,3 +239,14 @@
 - [x] Capture exact error: SQL failure selecting isBalancer/balancerEligiblePlayers — columns missing from remote DB
 - [x] Root cause: Drizzle migration journal was marked as applied but ALTER TABLE statements were never executed against the physical table
 - [x] Fix: applied ALTER TABLE directly via Node.js script; confirmed 13 columns in fixtures table; pnpm db:push now shows 'No schema changes'; server restarted cleanly
+
+## Round 27 — Three Improvements
+
+- [x] Backend: sandboxResetAndRegenerate function (reset + autoCreateBoxes + generateFixtures in one call)
+- [x] Backend: getFixtureBalanceSummary function (per-player match count with regular vs balancer breakdown)
+- [x] Backend: sandboxResetAndRegenerate tRPC procedure (admin-only)
+- [x] Backend: fixtureBalanceSummary tRPC query (admin-only)
+- [x] Server startup: schemaHealthCheck.ts — queries information_schema on boot, warns in logs if any expected column is missing
+- [x] Admin UI (Sandbox tab): "Reset & Regenerate Fixtures" button — combined reset + regenerate in one click
+- [x] Admin UI (Seasons tab): "Fixture Balance Summary" table — shows each player's total/regular/balancer match counts after fixture generation
+- [x] Tests: cover sandboxResetAndRegenerate and fixtureBalanceSummary procedures (61/61 passing)

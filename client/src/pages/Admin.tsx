@@ -131,6 +131,7 @@ export default function Admin() {
     onSuccess: (data) => {
       toast.success(`${data.totalFixtures} fixtures generated across ${data.boxCount} boxes!`);
       utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.fixtureBalanceSummary.invalidate();
     },
     onError: (e: { message: string }) => toast.error(e.message),
   });
@@ -143,6 +144,21 @@ export default function Admin() {
     },
     onError: (e: { message: string }) => toast.error(e.message),
   });
+
+  const sandboxResetAndRegenerateMutation = trpc.tournament.sandboxResetAndRegenerate.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Reset complete: ${data.deletedUsers} test users removed, ${data.totalFixtures} fixtures generated across ${data.boxCount} boxes.`);
+      utils.tournament.adminSeasonEntrants.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.fixtureBalanceSummary.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const { data: balanceSummary } = trpc.tournament.fixtureBalanceSummary.useQuery(
+    { seasonId: activeSeason?.id ?? 0 },
+    { enabled: (activeSeason?.id ?? 0) > 0 }
+  );
 
   const verifyMatchMutation = trpc.tournament.adminVerifyMatch.useMutation({
     onSuccess: () => { toast.success("Match verified."); },
@@ -351,6 +367,52 @@ export default function Admin() {
                 </p>
               ) : null}
             </div>
+
+            {/* Fixture balance summary — shown when fixtures exist */}
+            {balanceSummary && balanceSummary.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-emerald-100 flex items-center gap-2">
+                  <span className="text-xl">⚖️</span>
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">Fixture Balance Summary</h2>
+                  <span className="ml-auto text-xs text-gray-400">Verify each player has an equal number of matches</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left">
+                        <th className="px-6 py-3 font-semibold text-gray-600">Player</th>
+                        <th className="px-6 py-3 font-semibold text-gray-600 text-center">Total Matches</th>
+                        <th className="px-6 py-3 font-semibold text-gray-600 text-center">Regular</th>
+                        <th className="px-6 py-3 font-semibold text-gray-600 text-center">Balancer</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {balanceSummary.map((row) => (
+                        <tr key={row.playerId} className="hover:bg-gray-50">
+                          <td className="px-6 py-3 font-medium text-gray-800">{row.playerName}</td>
+                          <td className="px-6 py-3 text-center font-bold text-[#1b4332]">{row.totalMatches}</td>
+                          <td className="px-6 py-3 text-center text-gray-600">{row.totalMatches - row.balancerMatches}</td>
+                          <td className="px-6 py-3 text-center">
+                            {row.balancerMatches > 0 ? (
+                              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                                {row.balancerMatches} balancer
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="px-6 py-3 bg-gray-50 border-t border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    Balancer matches are played normally but award points only to players who needed the extra match to reach the season maximum. Players already at the maximum score 0 points in balancer fixtures.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Box fixture viewer */}
             {boxes && boxes.length > 0 && (
@@ -809,12 +871,31 @@ export default function Admin() {
               </div>
             </div>
 
-            {/* Reset sandbox */}
+            {/* Reset & Regenerate (combined) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 p-6">
+              <h3 className="font-serif text-lg font-bold text-[#1b4332] mb-2">Reset & Regenerate Fixtures</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Removes all test players, clears all boxes and fixtures, then immediately re-creates boxes from current paid entrants and generates a fresh balanced fixture schedule. Use this to quickly restart a full test cycle.
+              </p>
+              <button
+                onClick={() => {
+                  if (confirm("This will remove all test players, clear all boxes and fixtures, then regenerate everything from scratch. Continue?")) {
+                    activeSeason && sandboxResetAndRegenerateMutation.mutate({ seasonId: activeSeason.id });
+                  }
+                }}
+                disabled={!activeSeason || sandboxResetAndRegenerateMutation.isPending}
+                className="bg-[#1b4332] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#163828] transition-colors disabled:opacity-50 flex items-center gap-2">
+                {sandboxResetAndRegenerateMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Reset & Regenerate
+              </button>
+            </div>
+
+            {/* Reset sandbox only */}
             <div className="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
-              <h3 className="font-serif text-lg font-bold text-red-700 mb-2">Reset Sandbox Data</h3>
+              <h3 className="font-serif text-lg font-bold text-red-700 mb-2">Reset Sandbox Data Only</h3>
               <p className="text-sm text-gray-500 mb-4">
                 Removes all test players, their match records, partner slots, and match requests from the selected season.
-                Real member registrations and match results are <strong>not affected</strong>.
+                Boxes, fixtures, and real member registrations are <strong>not affected</strong>.
               </p>
               <button
                 onClick={() => {

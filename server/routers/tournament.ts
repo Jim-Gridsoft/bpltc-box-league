@@ -44,6 +44,8 @@ import {
   deleteSeason,
   endSeason,
   getAllFixturesBySeason,
+  sandboxResetAndRegenerate,
+  getFixtureBalanceSummary,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -710,5 +712,33 @@ export const tournamentRouter = router({
       });
 
       return match;
+    }),
+
+  /**
+   * Admin: reset all sandbox test data for a season and immediately regenerate
+   * balanced fixtures. Combines sandboxReset + autoCreateBoxes + generateFixtures
+   * into a single atomic action.
+   */
+  sandboxResetAndRegenerate: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await sandboxResetAndRegenerate(input.seasonId);
+      await notifyOwner({
+        title: `Sandbox reset + regenerated for season ${input.seasonId}`,
+        content: `Deleted ${result.deletedUsers} test users. Generated ${result.totalFixtures} fixtures across ${result.boxCount} boxes.`,
+      });
+      return result;
+    }),
+
+  /**
+   * Admin: get per-player fixture count summary for a season.
+   * Returns each player's total match count and how many are balancer fixtures.
+   */
+  fixtureBalanceSummary: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return getFixtureBalanceSummary(input.seasonId);
     }),
 });
