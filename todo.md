@@ -233,3 +233,9 @@
 - [x] Diagnose fixture generation error: migration timing issue — balancerEligiblePlayers column not yet in remote DB
 - [x] Fix root cause: ran pnpm db:push to apply migration, restarted server
 - [x] Verified: 0 TypeScript errors, 55/55 tests passing, server running cleanly
+
+## Round 26 — Fix Persistent Fixture Generation Error
+
+- [x] Capture exact error: SQL failure selecting isBalancer/balancerEligiblePlayers — columns missing from remote DB
+- [x] Root cause: Drizzle migration journal was marked as applied but ALTER TABLE statements were never executed against the physical table
+- [x] Fix: applied ALTER TABLE directly via Node.js script; confirmed 13 columns in fixtures table; pnpm db:push now shows 'No schema changes'; server restarted cleanly
