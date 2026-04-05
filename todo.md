@@ -102,3 +102,13 @@
 - [x] Validate scores: tiebreak at 5-5 (set ends 6-5), valid scores 6-0 to 6-5, same rule all sets
 - [x] Format stored score string as "6-4 3-6 6-5" from individual set inputs
 - [x] Update both Results page and Dashboard fixture cards
+
+## Round 10 — Points Calculation Correctness
+
+- [x] Audit reportMatch DB function: verify all 4 players get correct points (2 for win, 1 for loss)
+- [x] Verify season_entrants.points is updated for all 4 players after a result
+- [x] Verify box_members.points is updated for all 4 players after a result (box standings read from season_entrants via join)
+- [x] Verify year_points table is updated for all 4 players after a result
+- [x] Verify Standings (leaderboard) page reflects updated points (added staleTime:0 and cache invalidation)
+- [x] Verify box league standings reflect updated points (invalidate seasonBoxes + boxDetail on result submit)
+- [x] Add tests covering points update for all 4 players

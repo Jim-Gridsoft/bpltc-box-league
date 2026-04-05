@@ -76,15 +76,15 @@ export default function Leaderboard() {
   const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
   const { data: seasonLeaderboard, isLoading: loadingSeason } = trpc.tournament.seasonLeaderboard.useQuery(
     { seasonId: currentSeason?.id ?? 0 },
-    { enabled: !!currentSeason }
+    { enabled: !!currentSeason, staleTime: 0 }
   );
   const { data: yearLeaderboard, isLoading: loadingYear } = trpc.tournament.yearLeaderboard.useQuery(
     { year: CURRENT_YEAR },
-    { enabled: showYear }
+    { enabled: showYear, staleTime: 0 }
   );
   const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
     { seasonId: currentSeason?.id ?? 0 },
-    { enabled: !!currentSeason }
+    { enabled: !!currentSeason, staleTime: 0 }
   );
 
   return (

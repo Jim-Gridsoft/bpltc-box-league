@@ -81,9 +81,14 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       setOpen(false);
       setScoreResult({ scoreString: "", winner: null, valid: false, message: "" });
       setNotes("");
+      // Invalidate all queries that show points so they refresh immediately
       utils.tournament.myFixtures.invalidate();
       utils.tournament.myMatches.invalidate();
       utils.tournament.myEntry.invalidate();
+      utils.tournament.seasonLeaderboard.invalidate();
+      utils.tournament.yearLeaderboard.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.boxDetail.invalidate();
       onResultSubmitted();
     },
     onError: (e) => toast.error(e.message),

@@ -17,18 +17,12 @@ import {
   ClipboardEdit,
   X,
 } from "lucide-react";
+import SetScoreEntry, { ScoreResult } from "@/components/SetScoreEntry";
 
 // ── Inline result form state per fixture ─────────────────────────────────────
-interface FixtureResultState {
-  score: string;
-  winner: "A" | "B";
-  playedAt: string;
-  notes: string;
-}
+const defaultScoreResult = (): ScoreResult => ({ scoreString: "", winner: null, valid: false, message: "" });
 
-const defaultResultState = (): FixtureResultState => ({
-  score: "",
-  winner: "A",
+const defaultResultState = () => ({
   playedAt: new Date().toISOString().split("T")[0],
   notes: "",
 });
@@ -56,7 +50,8 @@ interface FixtureCardProps {
 
 function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCardProps) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<FixtureResultState>(defaultResultState);
+  const [form, setForm] = useState(defaultResultState);
+  const [scoreResult, setScoreResult] = useState<ScoreResult>(defaultScoreResult);
 
   const iAmTeamA = f.teamAPlayer1 === currentUserId || f.teamAPlayer2 === currentUserId;
 
@@ -87,30 +82,41 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
   const utils = trpc.useUtils();
   const reportMutation = trpc.tournament.reportMatch.useMutation({
     onSuccess: () => {
-      toast.success("Result recorded!");
+      toast.success("Result recorded! Points have been updated.");
       setOpen(false);
       setForm(defaultResultState());
+      // Invalidate all queries that display points so they refresh immediately
       utils.tournament.myFixtures.invalidate();
       utils.tournament.myMatches.invalidate();
       utils.tournament.myEntry.invalidate();
+      utils.tournament.myBox.invalidate();
+      utils.tournament.seasonLeaderboard.invalidate();
+      utils.tournament.yearLeaderboard.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.boxDetail.invalidate();
       onResultSubmitted();
     },
     onError: (e) => toast.error(e.message),
   });
 
   const handleSubmit = () => {
-    if (!form.score.trim()) {
-      toast.error("Please enter the score.");
+    if (!scoreResult.valid || !scoreResult.winner) {
+      toast.error(scoreResult.message || "Please enter a valid score.");
       return;
     }
+    // scoreResult.winner is from Team A's perspective (my team = A)
+    // If I'm actually Team B in the fixture, flip the winner
+    const fixtureWinner: "A" | "B" = iAmTeamA
+      ? scoreResult.winner
+      : scoreResult.winner === "A" ? "B" : "A";
     reportMutation.mutate({
       seasonId: f.seasonId,
       boxId: f.boxId,
       partner1Id: partnerId,
       player2Id: opp1Id,
       partner2Id: opp2Id,
-      score: form.score,
-      winner: iAmTeamA ? form.winner : form.winner === "A" ? "B" : "A",
+      score: scoreResult.scoreString,
+      winner: fixtureWinner,
       playedAt: new Date(form.playedAt),
       notes: form.notes || undefined,
       fixtureId: f.id,
@@ -170,33 +176,16 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
 
       {/* Inline result form */}
       {open && f.status === "scheduled" && (
-        <div className="border-t border-gray-200 bg-white px-4 py-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Enter Result
+        <div className="border-t border-gray-200 bg-white px-4 py-4 space-y-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Enter Result — My team vs {opponents}
           </p>
+
+          {/* Structured set-score entry */}
+          <SetScoreEntry onChange={setScoreResult} />
+
+          {/* Date + notes */}
           <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Score <span className="text-gray-400">(e.g. 6-4, 3-6, 10-7)</span>
-              </label>
-              <input
-                value={form.score}
-                onChange={(e) => setForm((s) => ({ ...s, score: e.target.value }))}
-                placeholder="6-4, 6-2"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Result</label>
-              <select
-                value={form.winner}
-                onChange={(e) => setForm((s) => ({ ...s, winner: e.target.value as "A" | "B" }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
-              >
-                <option value="A">We won (my team)</option>
-                <option value="B">We lost (opponents won)</option>
-              </select>
-            </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Date Played</label>
               <input
@@ -218,17 +207,18 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
               />
             </div>
           </div>
+
           <div className="flex items-center gap-3 pt-1">
             <button
               onClick={handleSubmit}
-              disabled={!form.score.trim() || reportMutation.isPending}
+              disabled={!scoreResult.valid || reportMutation.isPending}
               className="bg-[#1b4332] text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {reportMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               Submit Result
             </button>
             <button
-              onClick={() => { setOpen(false); setForm(defaultResultState()); }}
+              onClick={() => { setOpen(false); setForm(defaultResultState()); setScoreResult(defaultScoreResult()); }}
               className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               Cancel
