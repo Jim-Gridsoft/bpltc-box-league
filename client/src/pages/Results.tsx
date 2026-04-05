@@ -4,6 +4,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import TournamentNav from "@/components/TournamentNav";
 import { getLoginUrl } from "@/const";
 import { toast } from "sonner";
+import SetScoreEntry, { ScoreResult } from "@/components/SetScoreEntry";
 import {
   Calendar,
   CheckCircle2,
@@ -15,21 +16,6 @@ import {
   X,
   Trophy,
 } from "lucide-react";
-
-// ── Inline result form state per fixture ─────────────────────────────────────
-interface FixtureResultState {
-  score: string;
-  winner: "A" | "B";
-  playedAt: string;
-  notes: string;
-}
-
-const defaultResultState = (): FixtureResultState => ({
-  score: "",
-  winner: "A",
-  playedAt: new Date().toISOString().split("T")[0],
-  notes: "",
-});
 
 // ── FixtureCard ───────────────────────────────────────────────────────────────
 interface FixtureCardProps {
@@ -54,7 +40,14 @@ interface FixtureCardProps {
 
 function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCardProps) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<FixtureResultState>(defaultResultState);
+  const [scoreResult, setScoreResult] = useState<ScoreResult>({
+    scoreString: "",
+    winner: null,
+    valid: false,
+    message: "",
+  });
+  const [playedAt, setPlayedAt] = useState(new Date().toISOString().split("T")[0]);
+  const [notes, setNotes] = useState("");
 
   const iAmTeamA = f.teamAPlayer1 === currentUserId || f.teamAPlayer2 === currentUserId;
 
@@ -86,7 +79,8 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
     onSuccess: () => {
       toast.success("Result recorded! Points have been updated.");
       setOpen(false);
-      setForm(defaultResultState());
+      setScoreResult({ scoreString: "", winner: null, valid: false, message: "" });
+      setNotes("");
       utils.tournament.myFixtures.invalidate();
       utils.tournament.myMatches.invalidate();
       utils.tournament.myEntry.invalidate();
@@ -96,15 +90,17 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
   });
 
   const handleSubmit = () => {
-    if (!form.score.trim()) {
-      toast.error("Please enter the score.");
+    if (!scoreResult.valid || !scoreResult.winner) {
+      toast.error(scoreResult.message || "Please enter a valid score.");
       return;
     }
-    // iAmTeamA: my team is Team A in the fixture, so "A won" = "we won"
-    // iAmTeamB: my team is Team B, so "A won" = "we lost" → flip
+
+    // scoreResult.winner is from "my team" perspective ("A" = I won).
+    // The procedure expects winner relative to the fixture's Team A.
+    // If I am Team B, flip the winner.
     const fixtureWinner: "A" | "B" = iAmTeamA
-      ? form.winner
-      : form.winner === "A"
+      ? scoreResult.winner
+      : scoreResult.winner === "A"
       ? "B"
       : "A";
 
@@ -114,12 +110,18 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       partner1Id: partnerId,
       player2Id: opp1Id,
       partner2Id: opp2Id,
-      score: form.score,
+      score: scoreResult.scoreString,
       winner: fixtureWinner,
-      playedAt: new Date(form.playedAt),
-      notes: form.notes || undefined,
+      playedAt: new Date(playedAt),
+      notes: notes || undefined,
       fixtureId: f.id,
     });
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setScoreResult({ scoreString: "", winner: null, valid: false, message: "" });
+    setNotes("");
   };
 
   return (
@@ -171,39 +173,41 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
 
       {/* Inline result form */}
       {open && f.status === "scheduled" && (
-        <div className="border-t border-gray-200 bg-white px-4 py-4 space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Enter Result — Round {f.round}
-          </p>
+        <div className="border-t border-gray-200 bg-white px-5 py-5 space-y-5">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
+              Enter Result — Round {f.round}
+            </p>
+            <p className="text-xs text-gray-400">
+              You &amp; {myPartner} vs {opponents}
+            </p>
+          </div>
+
+          {/* Set score entry */}
+          <SetScoreEntry onChange={setScoreResult} />
+
+          {/* Auto-detected winner feedback */}
+          {scoreResult.valid && scoreResult.winner && (
+            <div
+              className={`text-sm font-semibold px-3 py-2 rounded-lg ${
+                scoreResult.winner === "A"
+                  ? "bg-green-50 text-green-700 border border-green-200"
+                  : "bg-red-50 text-red-700 border border-red-200"
+              }`}
+            >
+              {scoreResult.winner === "A" ? "✓ Your team won" : "✗ Opponents won"} —{" "}
+              {scoreResult.scoreString}
+            </div>
+          )}
+
+          {/* Date and notes */}
           <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">
-                Score <span className="text-gray-400">(e.g. 6-4, 3-6, 10-7)</span>
-              </label>
-              <input
-                value={form.score}
-                onChange={(e) => setForm((s) => ({ ...s, score: e.target.value }))}
-                placeholder="6-4, 6-2"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Result</label>
-              <select
-                value={form.winner}
-                onChange={(e) => setForm((s) => ({ ...s, winner: e.target.value as "A" | "B" }))}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
-              >
-                <option value="A">We won (my team)</option>
-                <option value="B">We lost (opponents won)</option>
-              </select>
-            </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Date Played</label>
               <input
                 type="date"
-                value={form.playedAt}
-                onChange={(e) => setForm((s) => ({ ...s, playedAt: e.target.value }))}
+                value={playedAt}
+                onChange={(e) => setPlayedAt(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
               />
             </div>
@@ -212,27 +216,25 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
                 Notes <span className="text-gray-400">(optional)</span>
               </label>
               <input
-                value={form.notes}
-                onChange={(e) => setForm((s) => ({ ...s, notes: e.target.value }))}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
                 placeholder="Any notes about the match"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
               />
             </div>
           </div>
-          <div className="flex items-center gap-3 pt-1">
+
+          <div className="flex items-center gap-3">
             <button
               onClick={handleSubmit}
-              disabled={!form.score.trim() || reportMutation.isPending}
+              disabled={!scoreResult.valid || reportMutation.isPending}
               className="bg-[#1b4332] text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {reportMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               Submit Result
             </button>
             <button
-              onClick={() => {
-                setOpen(false);
-                setForm(defaultResultState());
-              }}
+              onClick={handleClose}
               className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
             >
               Cancel
@@ -262,7 +264,6 @@ export default function Results() {
     { enabled: !!activeSeason && isAuthenticated }
   );
 
-  // Only fetch fixtures and matches for paid entrants
   const { data: myFixtures, refetch: refetchFixtures } = trpc.tournament.myFixtures.useQuery(
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!myEntry?.paid }
@@ -273,7 +274,6 @@ export default function Results() {
     { enabled: !!myEntry?.paid }
   );
 
-  // ── Loading ──
   if (authLoading)
     return (
       <div className="min-h-screen bg-[#faf6ee] flex items-center justify-center">
@@ -281,14 +281,15 @@ export default function Results() {
       </div>
     );
 
-  // ── Not logged in ──
   if (!isAuthenticated)
     return (
       <div className="min-h-screen bg-[#faf6ee]">
         <TournamentNav />
         <div className="max-w-md mx-auto px-4 py-24 text-center">
           <ClipboardList className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
-          <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Sign In to Record Results</h1>
+          <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">
+            Sign In to Record Results
+          </h1>
           <p className="text-gray-600 mb-8">
             You need to be signed in and registered for the current season to record match results.
           </p>
@@ -302,7 +303,6 @@ export default function Results() {
       </div>
     );
 
-  // ── Not a paid entrant ──
   if (myEntry && !myEntry.paid)
     return (
       <div className="min-h-screen bg-[#faf6ee]">
@@ -323,7 +323,6 @@ export default function Results() {
       </div>
     );
 
-  // ── Not registered ──
   if (!myEntry)
     return (
       <div className="min-h-screen bg-[#faf6ee]">
@@ -354,7 +353,6 @@ export default function Results() {
     <div className="min-h-screen bg-[#faf6ee]">
       <TournamentNav />
 
-      {/* Page header */}
       <div className="bg-[#1b4332] text-white py-10 px-4">
         <div className="max-w-4xl mx-auto">
           <p className="text-green-300 text-sm mb-1">
@@ -368,7 +366,6 @@ export default function Results() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {/* Season selector */}
         {seasons && seasons.length > 1 && (
           <div className="flex gap-2 flex-wrap">
             {seasons.map((s) => (

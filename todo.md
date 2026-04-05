@@ -94,3 +94,11 @@
 - [x] Show all user's fixtures grouped by round with Record Result button on each scheduled fixture
 - [x] Show match history below fixtures
 - [x] Register the /results route in App.tsx
+
+## Round 9 — Best-of-3 Sets Score Format
+
+- [x] Replace freeform score input with per-set game score inputs (Set 1, Set 2, optional Set 3)
+- [x] Auto-determine winner from set scores (2 sets wins the match)
+- [x] Validate scores: tiebreak at 5-5 (set ends 6-5), valid scores 6-0 to 6-5, same rule all sets
+- [x] Format stored score string as "6-4 3-6 6-5" from individual set inputs
+- [x] Update both Results page and Dashboard fixture cards
