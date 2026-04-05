@@ -77,6 +77,69 @@ export async function updateSeasonStatus(
   await db.update(seasons).set({ status }).where(eq(seasons.id, seasonId));
 }
 
+/**
+ * Permanently delete a season and ALL associated data in safe dependency order:
+ * 1. fixtures (reference boxes + seasons)
+ * 2. matches (reference boxes + seasons)
+ * 3. box_members (reference boxes + season_entrants)
+ * 4. boxes (reference seasons)
+ * 5. partner_slots (reference season_entrants)
+ * 6. match_requests (reference partner_slots — already deleted, but clean up by seasonEntrant)
+ * 7. season_entrants (reference seasons)
+ * 8. year_points rows where totalPoints would go to 0 (optional cleanup)
+ * 9. seasons row itself
+ */
+export async function deleteSeason(seasonId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 1. Delete fixtures for this season
+  await db.delete(fixtures).where(eq(fixtures.seasonId, seasonId));
+
+  // 2. Delete matches for this season
+  await db.delete(matches).where(eq(matches.seasonId, seasonId));
+
+  // 3. Get all boxes for this season so we can delete box_members
+  const seasonBoxes = await db.select().from(boxes).where(eq(boxes.seasonId, seasonId));
+  const boxIds = seasonBoxes.map((b) => b.id);
+  if (boxIds.length > 0) {
+    await db.delete(boxMembers).where(inArray(boxMembers.boxId, boxIds));
+  }
+
+  // 4. Delete boxes
+  await db.delete(boxes).where(eq(boxes.seasonId, seasonId));
+
+  // 5. Get all season entrants so we can clean up partner slots
+  const entrants = await db
+    .select()
+    .from(seasonEntrants)
+    .where(eq(seasonEntrants.seasonId, seasonId));
+  const entrantIds = entrants.map((e) => e.id);
+
+  if (entrantIds.length > 0) {
+    // 5a. Get partner slot IDs for these entrants
+    const slots = await db
+      .select()
+      .from(partnerSlots)
+      .where(inArray(partnerSlots.seasonEntrantId, entrantIds));
+    const slotIds = slots.map((s) => s.id);
+
+    // 5b. Delete match requests referencing those slots
+    if (slotIds.length > 0) {
+      await db.delete(matchRequests).where(inArray(matchRequests.slotId, slotIds));
+    }
+
+    // 5c. Delete partner slots
+    await db.delete(partnerSlots).where(inArray(partnerSlots.seasonEntrantId, entrantIds));
+  }
+
+  // 6. Delete season entrants
+  await db.delete(seasonEntrants).where(eq(seasonEntrants.seasonId, seasonId));
+
+  // 7. Delete the season itself
+  await db.delete(seasons).where(eq(seasons.id, seasonId));
+}
+
 // ── Season Entrants ───────────────────────────────────────────────────────────
 
 export async function getSeasonEntrantByUserId(userId: number, seasonId: number) {

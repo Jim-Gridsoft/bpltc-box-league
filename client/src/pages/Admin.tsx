@@ -5,7 +5,7 @@ import TournamentNav from "@/components/TournamentNav";
 import { toast } from "sonner";
 import {
   Shield, Users, Trophy, CheckCircle2, XCircle,
-  Loader2, ChevronDown, ChevronUp, Calendar, Plus,
+  Loader2, ChevronDown, ChevronUp, Calendar, Plus, Trash2,
 } from "lucide-react";
 
 export default function Admin() {
@@ -63,6 +63,19 @@ export default function Admin() {
       utils.tournament.seasons.invalidate();
     },
     onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState<number | null>(null);
+  const deleteSeasonMutation = trpc.tournament.adminDeleteSeason.useMutation({
+    onSuccess: () => {
+      toast.success("Season and all associated data deleted.");
+      setConfirmDeleteSeasonId(null);
+      utils.tournament.seasons.invalidate();
+      utils.tournament.currentSeason.invalidate();
+      utils.tournament.seasonLeaderboard.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+    },
+    onError: (e: { message: string }) => { toast.error(e.message); setConfirmDeleteSeasonId(null); },
   });
 
   const sandboxSeedMutation = trpc.tournament.sandboxSeedPlayers.useMutation({
@@ -435,19 +448,60 @@ export default function Admin() {
               ) : (
                 <div className="divide-y divide-gray-50">
                   {seasons.map((s) => (
-                    <div key={s.id} className="px-6 py-4 flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-800">{s.name}</p>
-                        <p className="text-xs text-gray-400">
-                          {new Date(s.startDate).toLocaleDateString("en-GB")} — {new Date(s.endDate).toLocaleDateString("en-GB")}
-                        </p>
+                    <div key={s.id} className="px-6 py-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-800">{s.name}</p>
+                          <p className="text-xs text-gray-400">
+                            {new Date(s.startDate).toLocaleDateString("en-GB")} — {new Date(s.endDate).toLocaleDateString("en-GB")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
+                            s.status === "active" ? "bg-green-100 text-green-700" :
+                            s.status === "registration" ? "bg-blue-100 text-blue-700" :
+                            s.status === "completed" ? "bg-gray-100 text-gray-600" :
+                            "bg-amber-100 text-amber-700"
+                          }`}>{s.status}</span>
+                          {confirmDeleteSeasonId === s.id ? null : (
+                            <button
+                              onClick={() => setConfirmDeleteSeasonId(s.id)}
+                              title="Delete season"
+                              className="text-red-400 hover:text-red-600 transition-colors p-1 rounded"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
-                        s.status === "active" ? "bg-green-100 text-green-700" :
-                        s.status === "registration" ? "bg-blue-100 text-blue-700" :
-                        s.status === "completed" ? "bg-gray-100 text-gray-600" :
-                        "bg-amber-100 text-amber-700"
-                      }`}>{s.status}</span>
+                      {/* Inline delete confirmation */}
+                      {confirmDeleteSeasonId === s.id && (
+                        <div className="mt-3 bg-red-50 border border-red-200 rounded-xl p-4">
+                          <p className="text-sm font-semibold text-red-700 mb-1">Delete "{s.name}"?</p>
+                          <p className="text-xs text-red-600 mb-3">
+                            This will permanently delete the season and ALL associated data — entrants, boxes, fixtures, and match results. This cannot be undone.
+                            {s.status === "active" && (
+                              <span className="block mt-1 font-semibold">⚠ This is the active season. You must change its status before deleting.</span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => deleteSeasonMutation.mutate({ seasonId: s.id })}
+                              disabled={deleteSeasonMutation.isPending || s.status === "active"}
+                              className="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {deleteSeasonMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              Yes, delete permanently
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteSeasonId(null)}
+                              className="text-sm text-gray-500 hover:text-gray-700 transition-colors px-3 py-1.5"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

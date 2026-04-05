@@ -112,3 +112,11 @@
 - [x] Verify Standings (leaderboard) page reflects updated points (added staleTime:0 and cache invalidation)
 - [x] Verify box league standings reflect updated points (invalidate seasonBoxes + boxDetail on result submit)
 - [x] Add tests covering points update for all 4 players
+
+## Round 11 — Delete Season
+
+- [x] Backend: deleteSeason DB function (cascade delete: matches, fixtures, box_members, boxes, season_entrants, year_points adjustments, then season)
+- [x] Backend: adminDeleteSeason tRPC procedure (admin-only)
+- [x] Admin UI: Delete button on each season card with confirmation dialog
+- [x] Admin UI: Prevent deletion of the active season (button disabled + warning shown)
+- [x] Tests: cover adminDeleteSeason procedure (28/28 pass)

@@ -40,6 +40,7 @@ import {
   generateFixtures,
   getFixturesByBox,
   getMyFixtures,
+  deleteSeason,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -301,6 +302,26 @@ export const tournamentRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       await updateSeasonStatus(input.seasonId, input.status);
+      return { success: true };
+    }),
+
+  /**
+   * Permanently delete a season and ALL associated data.
+   * Admin only. Cannot delete the currently active season.
+   */
+  adminDeleteSeason: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const season = await getSeasonById(input.seasonId);
+      if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
+      if (season.status === "active") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete an active season. Change its status first.",
+        });
+      }
+      await deleteSeason(input.seasonId);
       return { success: true };
     }),
 
