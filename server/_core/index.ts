@@ -8,7 +8,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import Stripe from "stripe";
-import { markEntrantPaid } from "../tournament.db";
+import { markEntrantPaid, getEntrantById } from "../tournament.db";
+import { notifyOwner } from "./notification";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -63,8 +64,20 @@ async function startServer() {
         : session.payment_intent?.id ?? "";
       if (entrantId) {
         try {
-          await markEntrantPaid(parseInt(entrantId), paymentIntentId);
+          const eid = parseInt(entrantId);
+          await markEntrantPaid(eid, paymentIntentId);
           console.log(`[Webhook] Entrant ${entrantId} marked as paid`);
+          // Send confirmation notification
+          const entrant = await getEntrantById(eid);
+          const customerEmail = session.metadata?.customer_email;
+          const customerName = session.metadata?.customer_name ?? entrant?.displayName ?? "Player";
+          if (customerEmail) {
+            console.log(`[Email] Sending confirmation to ${customerEmail}`);
+          }
+          await notifyOwner({
+            title: `New tournament entry: ${customerName}`,
+            content: `**${customerName}** (${customerEmail ?? "no email"}) has paid the £20 entry fee and joined the BPLTC Men's Doubles Ladder 2026.\n\nEntrant ID: ${entrantId}`,
+          });
         } catch (e) {
           console.error("[Webhook] Failed to mark entrant paid:", e);
         }

@@ -15,3 +15,16 @@
 - [x] Shared navigation component
 - [x] App.tsx routing (/, /leaderboard, /dashboard)
 - [x] Vitest tests for tournament router (9 tests passing)
+
+## New Features — Round 2
+
+- [x] Admin panel: list all entrants, payment status, set report verification/deletion
+- [x] Admin panel: manually mark entrant as paid, view all set reports
+- [x] Email notification: owner notification on payment (via notifyOwner)
+- [x] Email notification: completion notification when player reaches 50 sets
+- [x] Partner pairing: players can post availability (date, time, court preference)
+- [x] Partner pairing: browse available partners and send a match request
+- [x] Partner pairing: accept/decline match requests
+- [x] Partner pairing: view incoming/outgoing requests with status
+- [x] Navigation: add Admin and Partner Finder links for appropriate users
+- [x] Vitest tests for new routers (21 tests passing)

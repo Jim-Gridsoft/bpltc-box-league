@@ -2,16 +2,9 @@ import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean } from "d
 
 /**
  * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
  */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -52,8 +45,44 @@ export const setReports = mysqlTable("set_reports", {
   won: boolean("won").notNull(),
   playedOn: timestamp("playedOn").notNull(),
   notes: text("notes"),
+  verified: boolean("verified").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
 export type SetReport = typeof setReports.$inferSelect;
 export type InsertSetReport = typeof setReports.$inferInsert;
+
+// ── Partner Availability ───────────────────────────────────────────────────────
+// A player posts a slot when they are looking for a doubles partner.
+export const partnerSlots = mysqlTable("partner_slots", {
+  id: int("id").autoincrement().primaryKey(),
+  entrantId: int("entrantId").notNull(),
+  /** Free-text date/time description, e.g. "Saturday 12 Apr, 10am–12pm" */
+  slotDescription: varchar("slotDescription", { length: 256 }).notNull(),
+  /** Optional preferred court or notes */
+  notes: text("notes"),
+  /** Whether the slot is still open */
+  open: boolean("open").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PartnerSlot = typeof partnerSlots.$inferSelect;
+export type InsertPartnerSlot = typeof partnerSlots.$inferInsert;
+
+// ── Match Requests ─────────────────────────────────────────────────────────────
+// Sent by one entrant to another in response to an open partner slot.
+export const matchRequests = mysqlTable("match_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  slotId: int("slotId").notNull(),
+  /** The entrant who owns the slot (receives the request) */
+  toEntrantId: int("toEntrantId").notNull(),
+  /** The entrant who sent the request */
+  fromEntrantId: int("fromEntrantId").notNull(),
+  message: text("message"),
+  status: mysqlEnum("status", ["pending", "accepted", "declined"]).default("pending").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MatchRequest = typeof matchRequests.$inferSelect;
+export type InsertMatchRequest = typeof matchRequests.$inferInsert;
