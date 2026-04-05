@@ -86,3 +86,11 @@
 - [x] Backend: Update reportMatch to accept optional fixtureId and mark fixture status=played
 - [x] Backend: Ensure fixture status is updated when a match result is submitted
 - [x] Tests: cover fixture-linked match reporting
+
+## Round 8 — Dedicated Match Results Page
+
+- [x] Create /results page showing only the logged-in user's own fixtures (from myFixtures query)
+- [x] Add "Results" link to TournamentNav
+- [x] Show all user's fixtures grouped by round with Record Result button on each scheduled fixture
+- [x] Show match history below fixtures
+- [x] Register the /results route in App.tsx
