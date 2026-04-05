@@ -1,263 +1,454 @@
-import { eq, desc, and, lt, isNull, or } from "drizzle-orm";
+import { eq, desc, and, asc } from "drizzle-orm";
 import { getDb } from "./db";
 import {
-  entrants,
-  setReports,
+  seasons,
+  seasonEntrants,
+  yearPoints,
+  boxes,
+  boxMembers,
+  matches,
   partnerSlots,
   matchRequests,
   users,
-  InsertEntrant,
-  InsertSetReport,
+  InsertSeason,
+  InsertSeasonEntrant,
+  InsertBox,
+  InsertBoxMember,
+  InsertMatch,
   InsertPartnerSlot,
   InsertMatchRequest,
 } from "../drizzle/schema";
 
-// ── Entrants ──────────────────────────────────────────────────────────────────
+// ── Seasons ───────────────────────────────────────────────────────────────────
 
-export async function getEntrantByUserId(userId: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const rows = await db.select().from(entrants).where(eq(entrants.userId, userId)).limit(1);
-  return rows[0];
-}
-
-export async function getEntrantById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  const rows = await db.select().from(entrants).where(eq(entrants.id, id)).limit(1);
-  return rows[0];
-}
-
-export async function createEntrant(data: InsertEntrant) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.insert(entrants).values(data);
-  const rows = await db.select().from(entrants).where(eq(entrants.userId, data.userId)).limit(1);
-  return rows[0];
-}
-
-export async function markEntrantPaid(entrantId: number, stripePaymentIntentId: string) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db
-    .update(entrants)
-    .set({ paid: true, stripePaymentIntentId })
-    .where(eq(entrants.id, entrantId));
-}
-
-export async function getAllEntrants() {
+export async function getAllSeasons() {
   const db = await getDb();
   if (!db) return [];
-  // Join with users to get email for admin view
+  return db.select().from(seasons).orderBy(desc(seasons.startDate));
+}
+
+export async function getActiveSeason() {
+  const db = await getDb();
+  if (!db) return undefined;
   const rows = await db
-    .select({
-      id: entrants.id,
-      userId: entrants.userId,
-      displayName: entrants.displayName,
-      paid: entrants.paid,
-      setsWon: entrants.setsWon,
-      setsPlayed: entrants.setsPlayed,
-      completed: entrants.completed,
-      completedAt: entrants.completedAt,
-      stripePaymentIntentId: entrants.stripePaymentIntentId,
-      createdAt: entrants.createdAt,
-      updatedAt: entrants.updatedAt,
-      email: users.email,
-      userName: users.name,
-    })
-    .from(entrants)
-    .leftJoin(users, eq(entrants.userId, users.id))
-    .orderBy(desc(entrants.setsWon));
-  return rows;
-}
-
-export async function getLeaderboard() {
-  const db = await getDb();
-  if (!db) return [];
-  const rows = await db.select().from(entrants).where(eq(entrants.paid, true));
-  return rows.sort((a, b) => {
-    if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
-    if (a.completedAt && b.completedAt) {
-      return a.completedAt.getTime() - b.completedAt.getTime();
-    }
-    return 0;
-  });
-}
-
-/** Returns paid entrants who have not reported a set in the last 7 days */
-export async function getInactiveEntrants(daysSince = 7) {
-  const db = await getDb();
-  if (!db) return [];
-  const cutoff = new Date(Date.now() - daysSince * 24 * 60 * 60 * 1000);
-
-  // Get all paid, non-completed entrants
-  const paidEntrants = await db
-    .select({
-      id: entrants.id,
-      userId: entrants.userId,
-      displayName: entrants.displayName,
-      setsWon: entrants.setsWon,
-      email: users.email,
-    })
-    .from(entrants)
-    .leftJoin(users, eq(entrants.userId, users.id))
-    .where(and(eq(entrants.paid, true), eq(entrants.completed, false)));
-
-  // Filter those with no recent set reports
-  const inactive: typeof paidEntrants = [];
-  for (const e of paidEntrants) {
-    const recentSets = await db
-      .select()
-      .from(setReports)
-      .where(and(eq(setReports.entrantId, e.id)))
-      .orderBy(desc(setReports.createdAt))
-      .limit(1);
-
-    const lastSet = recentSets[0];
-    if (!lastSet || lastSet.createdAt < cutoff) {
-      inactive.push(e);
-    }
-  }
-  return inactive;
-}
-
-// ── Set Reports ───────────────────────────────────────────────────────────────
-
-export async function getSetReportsByEntrantId(entrantId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db
     .select()
-    .from(setReports)
-    .where(eq(setReports.entrantId, entrantId))
-    .orderBy(desc(setReports.playedOn));
+    .from(seasons)
+    .where(eq(seasons.status, "active"))
+    .limit(1);
+  return rows[0];
 }
 
-export async function getAllSetReports() {
+export async function getOpenSeason() {
   const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: setReports.id,
-      entrantId: setReports.entrantId,
-      displayName: entrants.displayName,
-      opponent: setReports.opponent,
-      score: setReports.score,
-      won: setReports.won,
-      playedOn: setReports.playedOn,
-      notes: setReports.notes,
-      verified: setReports.verified,
-      createdAt: setReports.createdAt,
-    })
-    .from(setReports)
-    .leftJoin(entrants, eq(setReports.entrantId, entrants.id))
-    .orderBy(desc(setReports.createdAt));
-}
-
-export async function verifySetReport(reportId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-  await db.update(setReports).set({ verified: true }).where(eq(setReports.id, reportId));
-}
-
-export async function adminDeleteSetReport(reportId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const rows = await db.select().from(setReports).where(eq(setReports.id, reportId)).limit(1);
-  if (!rows[0]) return;
-  const { entrantId } = rows[0];
-
-  await db.delete(setReports).where(eq(setReports.id, reportId));
-
-  // Recalculate totals
-  const allSets = await db.select().from(setReports).where(eq(setReports.entrantId, entrantId));
-  const setsPlayed = allSets.length;
-  const setsWon = allSets.filter((s) => s.won).length;
-  const completed = setsWon >= 50;
-  await db.update(entrants).set({ setsPlayed, setsWon, completed }).where(eq(entrants.id, entrantId));
-}
-
-export async function addSetReport(data: InsertSetReport) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  await db.insert(setReports).values(data);
-
-  const allSets = await db
+  if (!db) return undefined;
+  // Returns a season that is open for registration OR active
+  const rows = await db
     .select()
-    .from(setReports)
-    .where(eq(setReports.entrantId, data.entrantId));
-
-  const setsPlayed = allSets.length;
-  const setsWon = allSets.filter((s) => s.won).length;
-  const completed = setsWon >= 50;
-
-  const updateData: Partial<typeof entrants.$inferInsert> = { setsPlayed, setsWon, completed };
-
-  if (completed) {
-    const existing = await db.select().from(entrants).where(eq(entrants.id, data.entrantId)).limit(1);
-    if (existing[0] && !existing[0].completedAt) {
-      updateData.completedAt = new Date();
-    }
-  }
-
-  await db.update(entrants).set(updateData).where(eq(entrants.id, data.entrantId));
-
-  const updated = await db.select().from(entrants).where(eq(entrants.id, data.entrantId)).limit(1);
-  return updated[0];
+    .from(seasons)
+    .orderBy(asc(seasons.startDate))
+    .limit(10);
+  return rows.find((s) => s.status === "registration" || s.status === "active");
 }
 
-export async function deleteSetReport(reportId: number, entrantId: number) {
+export async function getSeasonById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(seasons).where(eq(seasons.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createSeason(data: InsertSeason) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  await db.insert(seasons).values(data);
+  const rows = await db.select().from(seasons).orderBy(desc(seasons.id)).limit(1);
+  return rows[0];
+}
 
+export async function updateSeasonStatus(
+  seasonId: number,
+  status: "upcoming" | "registration" | "active" | "completed"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(seasons).set({ status }).where(eq(seasons.id, seasonId));
+}
+
+// ── Season Entrants ───────────────────────────────────────────────────────────
+
+export async function getSeasonEntrantByUserId(userId: number, seasonId: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, seasonId)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function getSeasonEntrantById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(seasonEntrants).where(eq(seasonEntrants.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createSeasonEntrant(data: InsertSeasonEntrant) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(seasonEntrants).values(data);
+  const rows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.userId, data.userId), eq(seasonEntrants.seasonId, data.seasonId)))
+    .limit(1);
+  return rows[0];
+}
+
+export async function markSeasonEntrantPaid(entrantId: number, stripePaymentIntentId: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
   await db
-    .delete(setReports)
-    .where(and(eq(setReports.id, reportId), eq(setReports.entrantId, entrantId)));
+    .update(seasonEntrants)
+    .set({ paid: true, stripePaymentIntentId })
+    .where(eq(seasonEntrants.id, entrantId));
+}
 
-  const allSets = await db.select().from(setReports).where(eq(setReports.entrantId, entrantId));
-  const setsPlayed = allSets.length;
-  const setsWon = allSets.filter((s) => s.won).length;
-  const completed = setsWon >= 50;
+export async function getAllSeasonEntrants(seasonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: seasonEntrants.id,
+      userId: seasonEntrants.userId,
+      seasonId: seasonEntrants.seasonId,
+      displayName: seasonEntrants.displayName,
+      abilityRating: seasonEntrants.abilityRating,
+      paid: seasonEntrants.paid,
+      seasonPoints: seasonEntrants.seasonPoints,
+      matchesPlayed: seasonEntrants.matchesPlayed,
+      matchesWon: seasonEntrants.matchesWon,
+      stripePaymentIntentId: seasonEntrants.stripePaymentIntentId,
+      createdAt: seasonEntrants.createdAt,
+      email: users.email,
+    })
+    .from(seasonEntrants)
+    .leftJoin(users, eq(seasonEntrants.userId, users.id))
+    .where(eq(seasonEntrants.seasonId, seasonId))
+    .orderBy(desc(seasonEntrants.seasonPoints));
+}
 
-  await db.update(entrants).set({ setsPlayed, setsWon, completed }).where(eq(entrants.id, entrantId));
+// ── Year Points ───────────────────────────────────────────────────────────────
+
+export async function getYearLeaderboard(year: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: yearPoints.id,
+      userId: yearPoints.userId,
+      year: yearPoints.year,
+      totalPoints: yearPoints.totalPoints,
+      totalMatchesPlayed: yearPoints.totalMatchesPlayed,
+      totalMatchesWon: yearPoints.totalMatchesWon,
+      seasonsEntered: yearPoints.seasonsEntered,
+      displayName: users.name,
+    })
+    .from(yearPoints)
+    .leftJoin(users, eq(yearPoints.userId, users.id))
+    .where(eq(yearPoints.year, year))
+    .orderBy(desc(yearPoints.totalPoints));
+}
+
+export async function upsertYearPoints(
+  userId: number,
+  year: number,
+  pointsDelta: number,
+  won: boolean
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(yearPoints)
+    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year)))
+    .limit(1);
+
+  if (existing[0]) {
+    await db
+      .update(yearPoints)
+      .set({
+        totalPoints: existing[0].totalPoints + pointsDelta,
+        totalMatchesPlayed: existing[0].totalMatchesPlayed + 1,
+        totalMatchesWon: existing[0].totalMatchesWon + (won ? 1 : 0),
+      })
+      .where(eq(yearPoints.id, existing[0].id));
+  } else {
+    await db.insert(yearPoints).values({
+      userId,
+      year,
+      totalPoints: pointsDelta,
+      totalMatchesPlayed: 1,
+      totalMatchesWon: won ? 1 : 0,
+      seasonsEntered: 1,
+    });
+  }
+}
+
+// ── Boxes ─────────────────────────────────────────────────────────────────────
+
+export async function getBoxesBySeason(seasonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(boxes)
+    .where(eq(boxes.seasonId, seasonId))
+    .orderBy(asc(boxes.level));
+}
+
+export async function createBox(data: InsertBox) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(boxes).values(data);
+  const rows = await db.select().from(boxes).orderBy(desc(boxes.id)).limit(1);
+  return rows[0];
+}
+
+export async function getBoxWithMembers(boxId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const box = await db.select().from(boxes).where(eq(boxes.id, boxId)).limit(1);
+  if (!box[0]) return null;
+
+  const members = await db
+    .select({
+      id: boxMembers.id,
+      boxId: boxMembers.boxId,
+      seasonEntrantId: boxMembers.seasonEntrantId,
+      outcome: boxMembers.outcome,
+      displayName: seasonEntrants.displayName,
+      seasonPoints: seasonEntrants.seasonPoints,
+      matchesPlayed: seasonEntrants.matchesPlayed,
+      matchesWon: seasonEntrants.matchesWon,
+      abilityRating: seasonEntrants.abilityRating,
+      userId: seasonEntrants.userId,
+    })
+    .from(boxMembers)
+    .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
+    .where(eq(boxMembers.boxId, boxId))
+    .orderBy(desc(seasonEntrants.seasonPoints));
+
+  return { ...box[0], members };
+}
+
+export async function getMyBox(seasonEntrantId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const membership = await db
+    .select()
+    .from(boxMembers)
+    .where(eq(boxMembers.seasonEntrantId, seasonEntrantId))
+    .limit(1);
+  if (!membership[0]) return null;
+  return getBoxWithMembers(membership[0].boxId);
+}
+
+export async function addBoxMember(data: InsertBoxMember) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(boxMembers).values(data);
+}
+
+export async function setBoxMemberOutcome(
+  boxMemberId: number,
+  outcome: "promoted" | "stayed" | "relegated"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(boxMembers).set({ outcome }).where(eq(boxMembers.id, boxMemberId));
+}
+
+// ── Matches ───────────────────────────────────────────────────────────────────
+
+export async function getMatchesByBox(boxId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(matches)
+    .where(eq(matches.boxId, boxId))
+    .orderBy(desc(matches.playedAt));
+}
+
+export async function getMatchesByUser(userId: number, seasonId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const condition = seasonId
+    ? and(
+        eq(matches.seasonId, seasonId),
+        // User appears in any of the four player slots
+      )
+    : undefined;
+  // Fetch all matches for the season and filter in JS (simpler than complex OR in Drizzle)
+  const allMatches = seasonId
+    ? await db.select().from(matches).where(eq(matches.seasonId, seasonId))
+    : await db.select().from(matches);
+
+  return allMatches.filter(
+    (m) =>
+      m.player1Id === userId ||
+      m.partner1Id === userId ||
+      m.player2Id === userId ||
+      m.partner2Id === userId
+  );
+}
+
+export async function reportMatch(data: InsertMatch) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.insert(matches).values(data);
+
+  // Award points: 2 for win, 1 for loss
+  // Team A: player1 + partner1, Team B: player2 + partner2
+  const teamAWon = data.winner === "A";
+  const year = data.playedAt.getFullYear();
+
+  const teamA = [data.player1Id, data.partner1Id];
+  const teamB = [data.player2Id, data.partner2Id];
+
+  for (const userId of teamA) {
+    const entrant = await db
+      .select()
+      .from(seasonEntrants)
+      .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
+      .limit(1);
+    if (entrant[0]) {
+      const pts = teamAWon ? 2 : 1;
+      await db
+        .update(seasonEntrants)
+        .set({
+          seasonPoints: entrant[0].seasonPoints + pts,
+          matchesPlayed: entrant[0].matchesPlayed + 1,
+          matchesWon: entrant[0].matchesWon + (teamAWon ? 1 : 0),
+        })
+        .where(eq(seasonEntrants.id, entrant[0].id));
+      await upsertYearPoints(userId, year, pts, teamAWon);
+    }
+  }
+
+  for (const userId of teamB) {
+    const entrant = await db
+      .select()
+      .from(seasonEntrants)
+      .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, data.seasonId)))
+      .limit(1);
+    if (entrant[0]) {
+      const pts = teamAWon ? 1 : 2;
+      await db
+        .update(seasonEntrants)
+        .set({
+          seasonPoints: entrant[0].seasonPoints + pts,
+          matchesPlayed: entrant[0].matchesPlayed + 1,
+          matchesWon: entrant[0].matchesWon + (teamAWon ? 0 : 1),
+        })
+        .where(eq(seasonEntrants.id, entrant[0].id));
+      await upsertYearPoints(userId, year, pts, !teamAWon);
+    }
+  }
+
+  const rows = await db.select().from(matches).orderBy(desc(matches.id)).limit(1);
+  return rows[0];
+}
+
+export async function verifyMatch(matchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(matches).set({ verified: true }).where(eq(matches.id, matchId));
+}
+
+export async function deleteMatch(matchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db.select().from(matches).where(eq(matches.id, matchId)).limit(1);
+  if (!rows[0]) return;
+  const m = rows[0];
+
+  await db.delete(matches).where(eq(matches.id, matchId));
+
+  // Recalculate season points for all four players from remaining matches
+  const allPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id];
+  for (const userId of allPlayers) {
+    const entrant = await db
+      .select()
+      .from(seasonEntrants)
+      .where(and(eq(seasonEntrants.userId, userId), eq(seasonEntrants.seasonId, m.seasonId)))
+      .limit(1);
+    if (!entrant[0]) continue;
+
+    const allMatchesForUser = await db
+      .select()
+      .from(matches)
+      .where(eq(matches.seasonId, m.seasonId));
+
+    const userMatches = allMatchesForUser.filter(
+      (x) =>
+        x.player1Id === userId ||
+        x.partner1Id === userId ||
+        x.player2Id === userId ||
+        x.partner2Id === userId
+    );
+
+    let pts = 0;
+    let won = 0;
+    for (const um of userMatches) {
+      const onTeamA = um.player1Id === userId || um.partner1Id === userId;
+      const userWon = (onTeamA && um.winner === "A") || (!onTeamA && um.winner === "B");
+      pts += userWon ? 2 : 1;
+      if (userWon) won++;
+    }
+
+    await db
+      .update(seasonEntrants)
+      .set({ seasonPoints: pts, matchesPlayed: userMatches.length, matchesWon: won })
+      .where(eq(seasonEntrants.id, entrant[0].id));
+  }
 }
 
 // ── Partner Slots ─────────────────────────────────────────────────────────────
 
-export async function getOpenPartnerSlots(excludeEntrantId?: number) {
+export async function getOpenPartnerSlots(excludeUserId?: number, seasonId?: number) {
   const db = await getDb();
   if (!db) return [];
   const rows = await db
     .select({
       id: partnerSlots.id,
-      entrantId: partnerSlots.entrantId,
-      displayName: entrants.displayName,
-      setsWon: entrants.setsWon,
+      seasonEntrantId: partnerSlots.seasonEntrantId,
+      userId: partnerSlots.userId,
+      displayName: users.name,
       slotDescription: partnerSlots.slotDescription,
       notes: partnerSlots.notes,
       open: partnerSlots.open,
       createdAt: partnerSlots.createdAt,
     })
     .from(partnerSlots)
-    .leftJoin(entrants, eq(partnerSlots.entrantId, entrants.id))
+    .leftJoin(users, eq(partnerSlots.userId, users.id))
     .where(eq(partnerSlots.open, true))
     .orderBy(desc(partnerSlots.createdAt));
 
-  if (excludeEntrantId !== undefined) {
-    return rows.filter((r) => r.entrantId !== excludeEntrantId);
-  }
-  return rows;
+  return rows.filter((r) => r.userId !== excludeUserId);
 }
 
-export async function getMyPartnerSlots(entrantId: number) {
+export async function getMyPartnerSlots(userId: number) {
   const db = await getDb();
   if (!db) return [];
   return db
     .select()
     .from(partnerSlots)
-    .where(eq(partnerSlots.entrantId, entrantId))
+    .where(eq(partnerSlots.userId, userId))
     .orderBy(desc(partnerSlots.createdAt));
 }
 
@@ -268,19 +459,19 @@ export async function createPartnerSlot(data: InsertPartnerSlot) {
   const rows = await db
     .select()
     .from(partnerSlots)
-    .where(eq(partnerSlots.entrantId, data.entrantId))
+    .where(eq(partnerSlots.userId, data.userId))
     .orderBy(desc(partnerSlots.createdAt))
     .limit(1);
   return rows[0];
 }
 
-export async function closePartnerSlot(slotId: number, entrantId: number) {
+export async function closePartnerSlot(slotId: number, userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db
     .update(partnerSlots)
     .set({ open: false })
-    .where(and(eq(partnerSlots.id, slotId), eq(partnerSlots.entrantId, entrantId)));
+    .where(and(eq(partnerSlots.id, slotId), eq(partnerSlots.userId, userId)));
 }
 
 // ── Match Requests ─────────────────────────────────────────────────────────────
@@ -293,62 +484,58 @@ export async function createMatchRequest(data: InsertMatchRequest) {
     .select()
     .from(matchRequests)
     .where(
-      and(
-        eq(matchRequests.slotId, data.slotId),
-        eq(matchRequests.fromEntrantId, data.fromEntrantId)
-      )
+      and(eq(matchRequests.slotId, data.slotId), eq(matchRequests.fromUserId, data.fromUserId))
     )
     .orderBy(desc(matchRequests.createdAt))
     .limit(1);
   return rows[0];
 }
 
-export async function getIncomingRequests(toEntrantId: number) {
+export async function getIncomingRequests(toUserId: number) {
   const db = await getDb();
   if (!db) return [];
   return db
     .select({
       id: matchRequests.id,
       slotId: matchRequests.slotId,
-      fromEntrantId: matchRequests.fromEntrantId,
-      fromDisplayName: entrants.displayName,
-      fromSetsWon: entrants.setsWon,
+      fromUserId: matchRequests.fromUserId,
+      fromDisplayName: users.name,
       message: matchRequests.message,
       status: matchRequests.status,
       slotDescription: partnerSlots.slotDescription,
       createdAt: matchRequests.createdAt,
     })
     .from(matchRequests)
-    .leftJoin(entrants, eq(matchRequests.fromEntrantId, entrants.id))
+    .leftJoin(users, eq(matchRequests.fromUserId, users.id))
     .leftJoin(partnerSlots, eq(matchRequests.slotId, partnerSlots.id))
-    .where(eq(matchRequests.toEntrantId, toEntrantId))
+    .where(eq(matchRequests.toUserId, toUserId))
     .orderBy(desc(matchRequests.createdAt));
 }
 
-export async function getOutgoingRequests(fromEntrantId: number) {
+export async function getOutgoingRequests(fromUserId: number) {
   const db = await getDb();
   if (!db) return [];
   return db
     .select({
       id: matchRequests.id,
       slotId: matchRequests.slotId,
-      toEntrantId: matchRequests.toEntrantId,
-      toDisplayName: entrants.displayName,
+      toUserId: matchRequests.toUserId,
+      toDisplayName: users.name,
       message: matchRequests.message,
       status: matchRequests.status,
       slotDescription: partnerSlots.slotDescription,
       createdAt: matchRequests.createdAt,
     })
     .from(matchRequests)
-    .leftJoin(entrants, eq(matchRequests.toEntrantId, entrants.id))
+    .leftJoin(users, eq(matchRequests.toUserId, users.id))
     .leftJoin(partnerSlots, eq(matchRequests.slotId, partnerSlots.id))
-    .where(eq(matchRequests.fromEntrantId, fromEntrantId))
+    .where(eq(matchRequests.fromUserId, fromUserId))
     .orderBy(desc(matchRequests.createdAt));
 }
 
 export async function respondToMatchRequest(
   requestId: number,
-  toEntrantId: number,
+  toUserId: number,
   status: "accepted" | "declined"
 ) {
   const db = await getDb();
@@ -356,9 +543,8 @@ export async function respondToMatchRequest(
   await db
     .update(matchRequests)
     .set({ status })
-    .where(and(eq(matchRequests.id, requestId), eq(matchRequests.toEntrantId, toEntrantId)));
+    .where(and(eq(matchRequests.id, requestId), eq(matchRequests.toUserId, toUserId)));
 
-  // If accepted, close the slot so no more requests come in
   if (status === "accepted") {
     const rows = await db
       .select()

@@ -51,11 +51,15 @@ export default function PartnerFinder() {
   const [showSlotForm, setShowSlotForm] = useState(false);
 
   // Request form
-  const [requestingSlot, setRequestingSlot] = useState<{ id: number; toEntrantId: number; desc: string } | null>(null);
+  const [requestingSlot, setRequestingSlot] = useState<{ id: number; toUserId: number; desc: string } | null>(null);
   const [requestMsg, setRequestMsg] = useState("");
 
   // Queries
-  const { data: myEntry } = trpc.tournament.myEntry.useQuery(undefined, { enabled: isAuthenticated });
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const { data: myEntry } = trpc.tournament.myEntry.useQuery(
+    { seasonId: currentSeason?.id ?? 0 },
+    { enabled: isAuthenticated && !!currentSeason }
+  );
   const { data: openSlots, isLoading: slotsLoading } = trpc.tournament.partnerSlots.useQuery(undefined, {
     enabled: isAuthenticated && !!myEntry?.paid,
   });
@@ -239,9 +243,7 @@ export default function PartnerFinder() {
                         style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}>
                         {slot.displayName}
                       </p>
-                      <p className="text-sm mt-0.5" style={{ color: "var(--charcoal-mid)" }}>
-                        {slot.setsWon} sets won so far
-                      </p>
+
                       <div className="flex items-center gap-1.5 mt-2 text-sm" style={{ color: "var(--charcoal)" }}>
                         <CalendarDays size={14} style={{ color: "var(--gold)" }} />
                         {slot.slotDescription}
@@ -253,7 +255,7 @@ export default function PartnerFinder() {
                       )}
                     </div>
                     <Button size="sm"
-                      onClick={() => setRequestingSlot({ id: slot.id, toEntrantId: slot.entrantId!, desc: slot.slotDescription })}
+                      onClick={() => setRequestingSlot({ id: slot.id, toUserId: slot.userId, desc: slot.slotDescription })}
                       style={{ background: "var(--green-deep)", color: "var(--cream)", flexShrink: 0 }}>
                       <Send size={13} className="mr-1" />
                       Request
@@ -281,7 +283,7 @@ export default function PartnerFinder() {
                 style={{ background: "#fff", borderColor: "var(--gold)" }}
                 onSubmit={(e) => {
                   e.preventDefault();
-                  postSlotMut.mutate({ slotDescription: slotDesc, notes: slotNotes || undefined });
+                  postSlotMut.mutate({ seasonId: currentSeason?.id ?? 0, slotDescription: slotDesc, notes: slotNotes || undefined });
                 }}>
                 <h3 className="text-xl font-semibold"
                   style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}>
@@ -470,7 +472,7 @@ export default function PartnerFinder() {
                 disabled={sendRequestMut.isPending}
                 onClick={() => sendRequestMut.mutate({
                   slotId: requestingSlot.id,
-                  toEntrantId: requestingSlot.toEntrantId,
+                  toUserId: requestingSlot.toUserId,
                   message: requestMsg || undefined,
                 })}
                 style={{ background: "var(--green-deep)", color: "var(--cream)" }}>

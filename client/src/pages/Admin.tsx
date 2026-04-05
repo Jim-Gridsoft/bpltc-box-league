@@ -2,351 +2,389 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import TournamentNav from "@/components/TournamentNav";
-import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  CheckCircle2,
-  Trash2,
-  CreditCard,
-  Users,
-  ClipboardList,
-  ShieldAlert,
-  ChevronDown,
-  ChevronUp,
+  Shield, Users, Trophy, CheckCircle2, XCircle,
+  Loader2, ChevronDown, ChevronUp, Calendar, Plus,
 } from "lucide-react";
-import { useLocation } from "wouter";
-
-type Tab = "entrants" | "sets";
 
 export default function Admin() {
-  const { user, isAuthenticated, loading } = useAuth();
-  const [, navigate] = useLocation();
-  const [tab, setTab] = useState<Tab>("entrants");
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
   const [expandedEntrant, setExpandedEntrant] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"entrants" | "matches" | "seasons">("entrants");
+
+  // Create season form
+  const [newSeasonName, setNewSeasonName] = useState("");
+  const [newSeasonYear, setNewSeasonYear] = useState(2026);
+  const [newSeasonQuarter, setNewSeasonQuarter] = useState<"spring" | "summer" | "autumn" | "winter">("spring");
+  const [newSeasonStart, setNewSeasonStart] = useState("");
+  const [newSeasonEnd, setNewSeasonEnd] = useState("");
+  const [newSeasonDeadline, setNewSeasonDeadline] = useState("");
 
   const utils = trpc.useUtils();
+  const { data: seasons } = trpc.tournament.seasons.useQuery();
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const activeSeason = selectedSeasonId
+    ? seasons?.find((s) => s.id === selectedSeasonId) ?? currentSeason
+    : currentSeason;
 
-  const { data: entrants, isLoading: entrantsLoading } = trpc.tournament.adminAllEntrants.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "admin" }
+  const { data: entrants, isLoading: entrantsLoading } = trpc.tournament.adminSeasonEntrants.useQuery(
+    { seasonId: activeSeason?.id ?? 0 },
+    { enabled: !!activeSeason && user?.role === "admin" }
   );
 
-  const { data: setReports, isLoading: setsLoading } = trpc.tournament.adminAllSetReports.useQuery(
-    undefined,
-    { enabled: isAuthenticated && user?.role === "admin" && tab === "sets" }
+  const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
+    { seasonId: activeSeason?.id ?? 0 },
+    { enabled: !!activeSeason && user?.role === "admin" }
   );
 
-  const markPaidMut = trpc.tournament.adminMarkPaid.useMutation({
-    onSuccess: () => {
-      utils.tournament.adminAllEntrants.invalidate();
-      toast.success("Entrant marked as paid.");
-    },
-    onError: (e) => toast.error(e.message),
+  const markPaidMutation = trpc.tournament.adminMarkPaid.useMutation({
+    onSuccess: () => { toast.success("Marked as paid."); utils.tournament.adminSeasonEntrants.invalidate(); },
+    onError: (e: { message: string }) => toast.error(e.message),
   });
 
-  const verifySetMut = trpc.tournament.adminVerifySet.useMutation({
+  const updateStatusMutation = trpc.tournament.adminUpdateSeasonStatus.useMutation({
     onSuccess: () => {
-      utils.tournament.adminAllSetReports.invalidate();
-      toast.success("Set report verified.");
+      toast.success("Season status updated.");
+      utils.tournament.seasons.invalidate();
+      utils.tournament.currentSeason.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: { message: string }) => toast.error(e.message),
   });
 
-  const deleteSetMut = trpc.tournament.adminDeleteSet.useMutation({
+  const createSeasonMutation = trpc.tournament.adminCreateSeason.useMutation({
     onSuccess: () => {
-      utils.tournament.adminAllSetReports.invalidate();
-      utils.tournament.adminAllEntrants.invalidate();
-      toast.success("Set report deleted.");
+      toast.success("Season created!");
+      setNewSeasonName(""); setNewSeasonStart(""); setNewSeasonEnd(""); setNewSeasonDeadline("");
+      utils.tournament.seasons.invalidate();
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e: { message: string }) => toast.error(e.message),
   });
 
-  if (loading) {
-    return (
-      <div className="min-h-screen" style={{ background: "var(--cream)" }}>
-        <TournamentNav />
-        <div className="container py-24 text-center">
-          <div
-            className="w-12 h-12 rounded-full border-4 animate-spin mx-auto"
-            style={{ borderColor: "var(--green-deep)", borderTopColor: "transparent" }}
-          />
-        </div>
+  const verifyMatchMutation = trpc.tournament.adminVerifyMatch.useMutation({
+    onSuccess: () => { toast.success("Match verified."); },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const deleteMatchMutation = trpc.tournament.adminDeleteMatch.useMutation({
+    onSuccess: () => { toast.success("Match deleted."); },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  if (authLoading) return (
+    <div className="min-h-screen bg-[#faf6ee] flex items-center justify-center">
+      <Loader2 className="w-8 h-8 animate-spin text-[#1b4332]" />
+    </div>
+  );
+
+  if (!isAuthenticated || user?.role !== "admin") return (
+    <div className="min-h-screen bg-[#faf6ee]">
+      <TournamentNav />
+      <div className="max-w-md mx-auto px-4 py-24 text-center">
+        <Shield className="w-16 h-16 mx-auto mb-6 text-red-400" />
+        <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Access Restricted</h1>
+        <p className="text-gray-500">This page is only accessible to club administrators.</p>
       </div>
-    );
-  }
-
-  if (!isAuthenticated || user?.role !== "admin") {
-    return (
-      <div className="min-h-screen" style={{ background: "var(--cream)" }}>
-        <TournamentNav />
-        <div className="container py-24 text-center max-w-md mx-auto">
-          <ShieldAlert size={48} style={{ color: "var(--gold)", margin: "0 auto 16px" }} />
-          <h2
-            className="text-3xl font-semibold mb-3"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-          >
-            Admin Access Only
-          </h2>
-          <p className="mb-6" style={{ color: "var(--charcoal-mid)" }}>
-            This page is restricted to club administrators.
-          </p>
-          <Button onClick={() => navigate("/")} style={{ background: "var(--green-deep)", color: "var(--cream)" }}>
-            Back to Home
-          </Button>
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 
   const paid = entrants?.filter((e) => e.paid).length ?? 0;
   const unpaid = entrants?.filter((e) => !e.paid).length ?? 0;
-  const completed = entrants?.filter((e) => e.completed).length ?? 0;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--cream)" }}>
+    <div className="min-h-screen bg-[#faf6ee]">
       <TournamentNav />
-
-      {/* Header */}
-      <div
-        className="py-10 border-b"
-        style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.1)" }}
-      >
-        <div className="container">
-          <span
-            className="label-tag"
-            style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
-          >
-            Club Administration
-          </span>
-          <h1
-            className="text-4xl font-bold mt-1"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--cream)" }}
-          >
-            Admin Panel
-          </h1>
+      <div className="bg-[#1b4332] text-white py-10 px-4">
+        <div className="max-w-5xl mx-auto flex items-center gap-3">
+          <Shield className="w-8 h-8 text-[#c9a84c]" />
+          <div>
+            <h1 className="font-serif text-3xl font-bold">Admin Panel</h1>
+            <p className="text-green-200 text-sm mt-0.5">BPLTC Doubles Box League — Committee View</p>
+          </div>
         </div>
       </div>
 
-      <div className="container py-10 max-w-5xl space-y-8">
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        {/* Season selector */}
+        <div className="flex gap-2 flex-wrap items-center">
+          <span className="text-sm text-gray-500 font-medium">Season:</span>
+          {seasons?.map((s) => (
+            <button key={s.id} onClick={() => setSelectedSeasonId(s.id)}
+              className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${activeSeason?.id === s.id ? "bg-[#1b4332] text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Total Entrants", value: entrants?.length ?? 0, icon: Users },
-            { label: "Paid", value: paid, icon: CreditCard },
-            { label: "Unpaid", value: unpaid, icon: ClipboardList },
-            { label: "Completed 50 Sets", value: completed, icon: CheckCircle2 },
-          ].map(({ label, value, icon: Icon }) => (
-            <div
-              key={label}
-              className="rounded-lg border p-5 text-center"
-              style={{ background: "#fff", borderColor: "var(--cream-dark)" }}
-            >
-              <Icon size={20} style={{ color: "var(--gold)", margin: "0 auto 8px" }} />
-              <p
-                className="text-3xl font-bold"
-                style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-              >
-                {value}
-              </p>
-              <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)" }}>
-                {label}
-              </p>
+            { label: "Total Entrants", value: entrants?.length ?? 0, icon: <Users className="w-5 h-5 text-blue-500" /> },
+            { label: "Paid", value: paid, icon: <CheckCircle2 className="w-5 h-5 text-green-500" /> },
+            { label: "Unpaid", value: unpaid, icon: <XCircle className="w-5 h-5 text-amber-500" /> },
+            { label: "Boxes", value: boxes?.length ?? 0, icon: <Trophy className="w-5 h-5 text-[#c9a84c]" /> },
+          ].map((stat) => (
+            <div key={stat.label} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+              <div className="flex items-center gap-2 mb-1">{stat.icon}<span className="text-xs text-gray-500">{stat.label}</span></div>
+              <div className="text-2xl font-bold text-[#1b4332] font-serif">{stat.value}</div>
             </div>
           ))}
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 border-b" style={{ borderColor: "var(--cream-dark)" }}>
-          {(["entrants", "sets"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="px-5 py-3 text-sm font-medium transition-colors"
-              style={{
-                fontFamily: "'Space Grotesk', sans-serif",
-                color: tab === t ? "var(--green-deep)" : "var(--charcoal-mid)",
-                borderBottom: tab === t ? "2px solid var(--green-deep)" : "2px solid transparent",
-                marginBottom: "-1px",
-                background: "transparent",
-              }}
-            >
-              {t === "entrants" ? "Entrants" : "Set Reports"}
+        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+          {(["entrants", "matches", "seasons"] as const).map((tab) => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${activeTab === tab ? "bg-white shadow-sm text-[#1b4332]" : "text-gray-500 hover:text-gray-700"}`}>
+              {tab}
             </button>
           ))}
         </div>
 
-        {/* ── Entrants tab ── */}
-        {tab === "entrants" && (
-          <div className="space-y-3">
+        {/* Entrants tab */}
+        {activeTab === "entrants" && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Users className="w-5 h-5 text-[#c9a84c]" />
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">Season Entrants</h2>
+            </div>
             {entrantsLoading ? (
-              [...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-16 rounded-lg animate-pulse"
-                  style={{ background: "var(--cream-dark)" }}
-                />
-              ))
+              <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
             ) : !entrants || entrants.length === 0 ? (
-              <p style={{ color: "var(--charcoal-mid)" }}>No entrants yet.</p>
+              <div className="p-8 text-center text-gray-400">No entrants yet for this season.</div>
             ) : (
-              entrants.map((e) => (
-                <div
-                  key={e.id}
-                  className="rounded-lg border overflow-hidden"
-                  style={{ background: "#fff", borderColor: "var(--cream-dark)" }}
-                >
-                  <div
-                    className="flex items-center gap-4 p-4 cursor-pointer"
-                    onClick={() => setExpandedEntrant(expandedEntrant === e.id ? null : e.id)}
-                  >
-                    {/* Status dot */}
-                    <span
-                      className="shrink-0 w-2.5 h-2.5 rounded-full"
-                      style={{ background: e.paid ? "var(--green-mid)" : "var(--gold)" }}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className="font-semibold text-base truncate"
-                        style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-                      >
-                        {e.displayName}
-                      </p>
-                      <p className="text-xs" style={{ color: "var(--charcoal-mid)" }}>
-                        {e.email ?? "No email"} · Registered {new Date(e.createdAt).toLocaleDateString("en-GB")}
-                      </p>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-3">
-                      <span
-                        className="text-sm px-2 py-0.5 rounded-full"
-                        style={{
-                          background: e.paid ? "rgba(45,106,79,0.1)" : "rgba(201,168,76,0.15)",
-                          color: e.paid ? "var(--green-deep)" : "var(--gold)",
-                          fontFamily: "'Space Grotesk', sans-serif",
-                        }}
-                      >
-                        {e.paid ? "Paid" : "Unpaid"}
-                      </span>
-                      <span className="text-sm font-semibold" style={{ color: "var(--green-deep)" }}>
-                        {e.setsWon}/{50}
-                      </span>
-                      {expandedEntrant === e.id ? (
-                        <ChevronUp size={16} style={{ color: "var(--charcoal-mid)" }} />
-                      ) : (
-                        <ChevronDown size={16} style={{ color: "var(--charcoal-mid)" }} />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expanded detail */}
-                  {expandedEntrant === e.id && (
-                    <div
-                      className="px-4 pb-4 pt-2 border-t flex flex-wrap gap-3"
-                      style={{ borderColor: "var(--cream-dark)", background: "var(--cream)" }}
-                    >
-                      <div className="text-sm space-y-1 flex-1" style={{ color: "var(--charcoal-mid)" }}>
-                        <p>Sets played: <strong>{e.setsPlayed}</strong></p>
-                        <p>Sets won: <strong>{e.setsWon}</strong></p>
-                        <p>Completed: <strong>{e.completed ? "Yes" : "No"}</strong></p>
-                        {e.stripePaymentIntentId && (
-                          <p className="text-xs">Stripe PI: {e.stripePaymentIntentId}</p>
-                        )}
+              <div className="divide-y divide-gray-50">
+                {entrants.map((e) => (
+                  <div key={e.id}>
+                    <div className="px-6 py-4 flex items-center justify-between gap-4 cursor-pointer hover:bg-gray-50"
+                      onClick={() => setExpandedEntrant(expandedEntrant === e.id ? null : e.id)}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${e.paid ? "bg-green-500" : "bg-amber-400"}`} />
+                        <div>
+                          <p className="font-medium text-gray-800">{e.displayName}</p>
+                          <p className="text-xs text-gray-400">Ability: {e.abilityRating}/5 · {e.matchesPlayed} matches · {e.seasonPoints} pts</p>
+                        </div>
                       </div>
-                      {!e.paid && (
-                        <Button
-                          size="sm"
-                          disabled={markPaidMut.isPending}
-                          onClick={() => markPaidMut.mutate({ entrantId: e.id })}
-                          style={{ background: "var(--green-deep)", color: "var(--cream)" }}
-                        >
-                          <CreditCard size={14} className="mr-1" />
-                          Mark as Paid
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${e.paid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+                          {e.paid ? "Paid" : "Unpaid"}
+                        </span>
+                        {expandedEntrant === e.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))
+                    {expandedEntrant === e.id && (
+                      <div className="px-6 pb-4 bg-gray-50 border-t border-gray-100">
+                        <div className="pt-4 flex flex-wrap gap-4 items-start">
+                          <div className="text-xs text-gray-500 space-y-1">
+                            <p><strong>User ID:</strong> {e.userId}</p>
+                            <p><strong>Entrant ID:</strong> {e.id}</p>
+                            <p><strong>Matches Won:</strong> {e.matchesWon}</p>
+                            {e.stripePaymentIntentId && <p><strong>Stripe PI:</strong> {e.stripePaymentIntentId}</p>}
+                          </div>
+                          {!e.paid && (
+                            <button
+                              onClick={() => markPaidMutation.mutate({ entrantId: e.id })}
+                              disabled={markPaidMutation.isPending}
+                              className="ml-auto self-start bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                              {markPaidMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                              Mark as Paid
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
 
-        {/* ── Set Reports tab ── */}
-        {tab === "sets" && (
-          <div className="space-y-2">
-            {setsLoading ? (
-              [...Array(5)].map((_, i) => (
-                <div
-                  key={i}
-                  className="h-14 rounded-lg animate-pulse"
-                  style={{ background: "var(--cream-dark)" }}
-                />
-              ))
-            ) : !setReports || setReports.length === 0 ? (
-              <p style={{ color: "var(--charcoal-mid)" }}>No set reports yet.</p>
+        {/* Matches tab */}
+        {activeTab === "matches" && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-[#c9a84c]" />
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">Match Results</h2>
+            </div>
+            {!boxes || boxes.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">No boxes created for this season yet.</div>
             ) : (
-              setReports.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-3 py-3 px-4 rounded-lg border"
-                  style={{
-                    background: s.verified ? "rgba(45,106,79,0.04)" : "#fff",
-                    borderColor: s.verified ? "rgba(45,106,79,0.2)" : "var(--cream-dark)",
-                  }}
-                >
-                  <span
-                    className="shrink-0 w-2 h-2 rounded-full"
-                    style={{ background: s.won ? "var(--green-mid)" : "var(--charcoal-mid)" }}
+              <div className="divide-y divide-gray-50">
+                {boxes.map((box) => (
+                  <BoxMatchesRow
+                    key={box.id}
+                    box={box}
+                    onVerify={(id) => verifyMatchMutation.mutate({ matchId: id })}
+                    onDelete={(id) => deleteMatchMutation.mutate({ matchId: id })}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium" style={{ color: "var(--charcoal)" }}>
-                      <span style={{ color: "var(--green-deep)" }}>{s.displayName}</span>
-                      {" vs "}
-                      {s.opponent}
-                    </p>
-                    <p className="text-xs" style={{ color: "var(--charcoal-mid)" }}>
-                      {s.score} · {new Date(s.playedOn).toLocaleDateString("en-GB")}
-                      {s.notes ? ` · ${s.notes}` : ""}
-                    </p>
-                  </div>
-                  {s.verified && (
-                    <span
-                      className="shrink-0 text-xs px-2 py-0.5 rounded-full"
-                      style={{ background: "rgba(45,106,79,0.1)", color: "var(--green-deep)" }}
-                    >
-                      Verified
-                    </span>
-                  )}
-                  {!s.verified && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={verifySetMut.isPending}
-                      onClick={() => verifySetMut.mutate({ reportId: s.id })}
-                      style={{ borderColor: "var(--green-mid)", color: "var(--green-mid)" }}
-                    >
-                      <CheckCircle2 size={13} className="mr-1" />
-                      Verify
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={deleteSetMut.isPending}
-                    onClick={() => {
-                      if (confirm("Delete this set report? This will recalculate the player's totals.")) {
-                        deleteSetMut.mutate({ reportId: s.id });
-                      }
-                    }}
-                    style={{ borderColor: "var(--charcoal-mid)", color: "var(--charcoal-mid)" }}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              ))
+                ))}
+              </div>
             )}
+          </div>
+        )}
+
+        {/* Seasons tab */}
+        {activeTab === "seasons" && (
+          <div className="space-y-6">
+            {activeSeason && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <h2 className="font-serif text-xl font-bold text-[#1b4332] mb-4">Update Season Status</h2>
+                <p className="text-sm text-gray-500 mb-4">Current status: <strong className="capitalize">{activeSeason.status}</strong></p>
+                <div className="flex flex-wrap gap-2">
+                  {(["upcoming", "registration", "active", "completed"] as const).map((status) => (
+                    <button key={status} onClick={() => updateStatusMutation.mutate({ seasonId: activeSeason.id, status })}
+                      disabled={activeSeason.status === status || updateStatusMutation.isPending}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors disabled:opacity-40 ${activeSeason.status === status ? "bg-[#1b4332] text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}>
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-2 mb-6">
+                <Plus className="w-5 h-5 text-[#c9a84c]" />
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">Create New Season</h2>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4 max-w-2xl">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Season Name</label>
+                  <input value={newSeasonName} onChange={(e) => setNewSeasonName(e.target.value)} placeholder="e.g. Spring 2026"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                  <input type="number" value={newSeasonYear} onChange={(e) => setNewSeasonYear(Number(e.target.value))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Quarter</label>
+                  <select value={newSeasonQuarter} onChange={(e) => setNewSeasonQuarter(e.target.value as typeof newSeasonQuarter)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
+                    <option value="spring">Spring (Apr–Jun)</option>
+                    <option value="summer">Summer (Jul–Sep)</option>
+                    <option value="autumn">Autumn (Oct–Dec)</option>
+                    <option value="winter">Winter (Jan–Mar)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Registration Deadline</label>
+                  <input type="date" value={newSeasonDeadline} onChange={(e) => setNewSeasonDeadline(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input type="date" value={newSeasonStart} onChange={(e) => setNewSeasonStart(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input type="date" value={newSeasonEnd} onChange={(e) => setNewSeasonEnd(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
+                </div>
+              </div>
+              <button
+                onClick={() => createSeasonMutation.mutate({
+                  name: newSeasonName,
+                  year: newSeasonYear,
+                  quarter: newSeasonQuarter,
+                  startDate: new Date(newSeasonStart),
+                  endDate: new Date(newSeasonEnd),
+                  registrationDeadline: new Date(newSeasonDeadline),
+                })}
+                disabled={!newSeasonName.trim() || !newSeasonStart || !newSeasonEnd || !newSeasonDeadline || createSeasonMutation.isPending}
+                className="mt-4 bg-[#1b4332] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center gap-2">
+                {createSeasonMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Create Season
+              </button>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#c9a84c]" />
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">All Seasons</h2>
+              </div>
+              {!seasons || seasons.length === 0 ? (
+                <div className="p-8 text-center text-gray-400">No seasons created yet.</div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {seasons.map((s) => (
+                    <div key={s.id} className="px-6 py-4 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-gray-800">{s.name}</p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(s.startDate).toLocaleDateString("en-GB")} — {new Date(s.endDate).toLocaleDateString("en-GB")}
+                        </p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${
+                        s.status === "active" ? "bg-green-100 text-green-700" :
+                        s.status === "registration" ? "bg-blue-100 text-blue-700" :
+                        s.status === "completed" ? "bg-gray-100 text-gray-600" :
+                        "bg-amber-100 text-amber-700"
+                      }`}>{s.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function BoxMatchesRow({
+  box,
+  onVerify,
+  onDelete,
+}: {
+  box: { id: number; name: string };
+  onVerify: (id: number) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const { data: matches } = trpc.tournament.boxMatches.useQuery({ boxId: box.id }, { enabled: expanded });
+
+  return (
+    <div>
+      <div className="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50" onClick={() => setExpanded(!expanded)}>
+        <p className="font-medium text-gray-800">{box.name}</p>
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      </div>
+      {expanded && (
+        <div className="px-6 pb-4 bg-gray-50 border-t border-gray-100">
+          {!matches || matches.length === 0 ? (
+            <p className="text-sm text-gray-400 pt-3">No matches reported in this box yet.</p>
+          ) : (
+            <div className="space-y-2 pt-3">
+              {matches.map((m) => (
+                <div key={m.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-gray-100">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{m.score} — Team {m.winner} won</p>
+                    <p className="text-xs text-gray-400">{new Date(m.playedAt).toLocaleDateString("en-GB")}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {m.verified ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : (
+                      <button onClick={() => onVerify(m.id)} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-medium hover:bg-green-200 transition-colors">
+                        Verify
+                      </button>
+                    )}
+                    <button onClick={() => onDelete(m.id)} className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-medium hover:bg-red-200 transition-colors">
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

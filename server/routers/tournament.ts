@@ -2,26 +2,37 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import {
-  addSetReport,
-  adminDeleteSetReport,
-  closePartnerSlot,
-  createEntrant,
-  createMatchRequest,
-  createPartnerSlot,
-  deleteSetReport,
-  getAllEntrants,
-  getAllSetReports,
-  getEntrantById,
-  getEntrantByUserId,
-  getIncomingRequests,
-  getLeaderboard,
-  getMyPartnerSlots,
+  getAllSeasons,
+  getActiveSeason,
+  getOpenSeason,
+  getSeasonById,
+  createSeason,
+  updateSeasonStatus,
+  getSeasonEntrantByUserId,
+  getSeasonEntrantById,
+  createSeasonEntrant,
+  markSeasonEntrantPaid,
+  getAllSeasonEntrants,
+  getYearLeaderboard,
+  getBoxesBySeason,
+  createBox,
+  getBoxWithMembers,
+  getMyBox,
+  addBoxMember,
+  setBoxMemberOutcome,
+  getMatchesByBox,
+  getMatchesByUser,
+  reportMatch,
+  verifyMatch,
+  deleteMatch,
   getOpenPartnerSlots,
+  getMyPartnerSlots,
+  createPartnerSlot,
+  closePartnerSlot,
+  createMatchRequest,
+  getIncomingRequests,
   getOutgoingRequests,
-  getSetReportsByEntrantId,
-  markEntrantPaid,
   respondToMatchRequest,
-  verifySetReport,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -31,225 +42,359 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
 }
 
-/** Simple in-process email via owner notification (no external SMTP required) */
-async function sendEmail(to: string, subject: string, body: string) {
-  // In production this would call an SMTP/SendGrid/SES service.
-  // For now we notify the club owner and log to console.
-  console.log(`[Email] To: ${to} | Subject: ${subject}`);
-  await notifyOwner({ title: `Email sent → ${to}`, content: `**${subject}**\n\n${body}` });
-}
-
 export const tournamentRouter = router({
-  // ── Public: leaderboard ────────────────────────────────────────────────────
-  leaderboard: publicProcedure.query(async () => {
-    return getLeaderboard();
+  // ── Seasons (public) ────────────────────────────────────────────────────────
+
+  /** List all seasons */
+  seasons: publicProcedure.query(async () => {
+    return getAllSeasons();
   }),
 
-  // ── Protected: get my entrant record ──────────────────────────────────────
-  myEntry: protectedProcedure.query(async ({ ctx }) => {
-    return getEntrantByUserId(ctx.user.id) ?? null;
+  /** Get the currently open/active season */
+  currentSeason: publicProcedure.query(async () => {
+    return (await getOpenSeason()) ?? null;
   }),
 
-  // ── Protected: register for the tournament ────────────────────────────────
+  // ── Season Entry ────────────────────────────────────────────────────────────
+
+  /** Get the current user's entry for a given season */
+  myEntry: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return (await getSeasonEntrantByUserId(ctx.user.id, input.seasonId)) ?? null;
+    }),
+
+  /** Register for a season */
   register: protectedProcedure
-    .input(z.object({ displayName: z.string().min(2).max(128) }))
+    .input(
+      z.object({
+        seasonId: z.number(),
+        displayName: z.string().min(2).max(128),
+        abilityRating: z.number().int().min(1).max(5),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const existing = await getEntrantByUserId(ctx.user.id);
+      const season = await getSeasonById(input.seasonId);
+      if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
+      if (season.status !== "registration" && season.status !== "active") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Registration is not open for this season.",
+        });
+      }
+      const existing = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
       if (existing) {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "You are already registered for this tournament.",
+          message: "You are already registered for this season.",
         });
       }
-      const entrant = await createEntrant({
+      return createSeasonEntrant({
+        seasonId: input.seasonId,
         userId: ctx.user.id,
         displayName: input.displayName,
+        abilityRating: input.abilityRating,
         paid: false,
       });
-      return entrant;
     }),
 
-  // ── Protected: create Stripe checkout session ─────────────────────────────
-  createCheckout: protectedProcedure.mutation(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    if (!entrant) {
-      throw new TRPCError({ code: "NOT_FOUND", message: "Please register first." });
-    }
-    if (entrant.paid) {
-      throw new TRPCError({ code: "CONFLICT", message: "Entry fee already paid." });
-    }
+  /** Create a Stripe checkout session for the £20 entry fee */
+  createCheckout: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
+      if (!entrant) throw new TRPCError({ code: "NOT_FOUND", message: "Please register first." });
+      if (entrant.paid) throw new TRPCError({ code: "CONFLICT", message: "Entry fee already paid." });
 
-    const stripe = getStripe();
-    const origin = (ctx.req.headers.origin as string) || "https://tennisspon-ptkxsipn.manus.space";
+      const stripe = getStripe();
+      const origin =
+        (ctx.req.headers.origin as string) || "https://tennisspon-ptkxsipn.manus.space";
+      const season = await getSeasonById(input.seasonId);
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      customer_email: ctx.user.email ?? undefined,
-      line_items: [
-        {
-          price_data: {
-            currency: TOURNAMENT_ENTRY.currency,
-            product_data: {
-              name: TOURNAMENT_ENTRY.name,
-              description: TOURNAMENT_ENTRY.description,
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        mode: "payment",
+        customer_email: ctx.user.email ?? undefined,
+        line_items: [
+          {
+            price_data: {
+              currency: TOURNAMENT_ENTRY.currency,
+              product_data: {
+                name: `${TOURNAMENT_ENTRY.name} — ${season?.name ?? "Season"}`,
+                description: TOURNAMENT_ENTRY.description,
+              },
+              unit_amount: TOURNAMENT_ENTRY.amount,
             },
-            unit_amount: TOURNAMENT_ENTRY.amount,
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        client_reference_id: ctx.user.id.toString(),
+        metadata: {
+          user_id: ctx.user.id.toString(),
+          entrant_id: entrant.id.toString(),
+          season_id: input.seasonId.toString(),
+          customer_email: ctx.user.email ?? "",
+          customer_name: ctx.user.name ?? "",
         },
-      ],
-      client_reference_id: ctx.user.id.toString(),
-      metadata: {
-        user_id: ctx.user.id.toString(),
-        entrant_id: entrant.id.toString(),
-        customer_email: ctx.user.email ?? "",
-        customer_name: ctx.user.name ?? "",
-      },
-      allow_promotion_codes: true,
-      success_url: `${origin}/dashboard?payment=success`,
-      cancel_url: `${origin}/dashboard?payment=cancelled`,
-    });
+        allow_promotion_codes: true,
+        success_url: `${origin}/my-season?payment=success`,
+        cancel_url: `${origin}/my-season?payment=cancelled`,
+      });
 
-    return { url: session.url };
-  }),
+      return { url: session.url };
+    }),
 
-  // ── Protected: report a set ───────────────────────────────────────────────
-  reportSet: protectedProcedure
+  // ── Leaderboards ────────────────────────────────────────────────────────────
+
+  /** Season leaderboard — all paid entrants ranked by season points */
+  seasonLeaderboard: publicProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ input }) => {
+      const entrants = await getAllSeasonEntrants(input.seasonId);
+      return entrants.filter((e) => e.paid);
+    }),
+
+  /** Year-long accumulator leaderboard */
+  yearLeaderboard: publicProcedure
+    .input(z.object({ year: z.number() }))
+    .query(async ({ input }) => {
+      return getYearLeaderboard(input.year);
+    }),
+
+  // ── Boxes ────────────────────────────────────────────────────────────────────
+
+  /** Get all boxes for a season */
+  seasonBoxes: publicProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ input }) => {
+      return getBoxesBySeason(input.seasonId);
+    }),
+
+  /** Get a box with its members and standings */
+  boxDetail: publicProcedure
+    .input(z.object({ boxId: z.number() }))
+    .query(async ({ input }) => {
+      return getBoxWithMembers(input.boxId);
+    }),
+
+  /** Get the current user's box for a season */
+  myBox: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
+      if (!entrant) return null;
+      return getMyBox(entrant.id);
+    }),
+
+  // ── Matches ──────────────────────────────────────────────────────────────────
+
+  /** Get all matches in a box */
+  boxMatches: publicProcedure
+    .input(z.object({ boxId: z.number() }))
+    .query(async ({ input }) => {
+      return getMatchesByBox(input.boxId);
+    }),
+
+  /** Get the current user's matches for a season */
+  myMatches: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      return getMatchesByUser(ctx.user.id, input.seasonId);
+    }),
+
+  /**
+   * Report a doubles match result.
+   * All four players must be paid entrants in the same box.
+   * Rotating partner rule: player1 and partner1 must not have been partners
+   * more than once already in this season (enforced as a warning, not a hard block).
+   */
+  reportMatch: protectedProcedure
     .input(
       z.object({
-        opponent: z.string().min(2).max(256),
-        score: z.string().min(1).max(32),
-        won: z.boolean(),
-        playedOn: z.date(),
+        seasonId: z.number(),
+        boxId: z.number(),
+        partner1Id: z.number(), // reporter's partner (userId)
+        player2Id: z.number(), // opponent 1 (userId)
+        partner2Id: z.number(), // opponent 2 (userId)
+        score: z.string().min(1).max(64),
+        winner: z.enum(["A", "B"]),
+        playedAt: z.date(),
         notes: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
-      if (!entrant) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "You are not registered." });
-      }
-      if (!entrant.paid) {
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
+      if (!entrant?.paid) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Please complete your entry fee payment before reporting sets.",
+          message: "You must be a paid entrant to report matches.",
         });
       }
-      const updated = await addSetReport({
-        entrantId: entrant.id,
-        opponent: input.opponent,
+
+      // Validate all four players are distinct
+      const ids = [ctx.user.id, input.partner1Id, input.player2Id, input.partner2Id];
+      if (new Set(ids).size !== 4) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "All four players must be different people.",
+        });
+      }
+
+      const match = await reportMatch({
+        boxId: input.boxId,
+        seasonId: input.seasonId,
+        player1Id: ctx.user.id,
+        partner1Id: input.partner1Id,
+        player2Id: input.player2Id,
+        partner2Id: input.partner2Id,
         score: input.score,
-        won: input.won,
-        playedOn: input.playedOn,
+        winner: input.winner,
+        playedAt: input.playedAt,
         notes: input.notes ?? null,
       });
 
-      // Notify when player reaches 50 sets
-      if (updated?.completed && !entrant.completed && ctx.user.email) {
-        await sendEmail(
-          ctx.user.email,
-          "🎾 Congratulations — Challenge Complete!",
-          `Dear ${entrant.displayName},\n\nYou have reached 50 sets won in the BPLTC Men's Doubles Ladder 2026. Congratulations!\n\nCheck the leaderboard to see your final ranking.\n\nBramhall Park Lawn Tennis Club`
-        );
-      }
+      await notifyOwner({
+        title: "Match result reported",
+        content: `A match was reported in Box ${input.boxId} (Season ${input.seasonId}). Score: ${input.score}. Winner: Team ${input.winner}.`,
+      });
 
-      return updated;
-    }),
-
-  // ── Protected: get my set history ─────────────────────────────────────────
-  mySetHistory: protectedProcedure.query(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    if (!entrant) return [];
-    return getSetReportsByEntrantId(entrant.id);
-  }),
-
-  // ── Protected: delete a set report ────────────────────────────────────────
-  deleteSet: protectedProcedure
-    .input(z.object({ reportId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
-      if (!entrant) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "You are not registered." });
-      }
-      await deleteSetReport(input.reportId, entrant.id);
-      return { success: true };
+      return match;
     }),
 
   // ════════════════════════════════════════════════════════════════════════════
   // ADMIN PROCEDURES
   // ════════════════════════════════════════════════════════════════════════════
 
-  adminAllEntrants: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-    return getAllEntrants();
-  }),
-
-  adminAllSetReports: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-    return getAllSetReports();
-  }),
-
-  adminVerifySet: protectedProcedure
-    .input(z.object({ reportId: z.number() }))
+  /** Create a new season */
+  adminCreateSeason: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(3).max(64),
+        year: z.number().int(),
+        quarter: z.enum(["spring", "summer", "autumn", "winter"]),
+        startDate: z.date(),
+        endDate: z.date(),
+        registrationDeadline: z.date(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-      await verifySetReport(input.reportId);
+      return createSeason({ ...input, status: "upcoming" });
+    }),
+
+  /** Update season status */
+  adminUpdateSeasonStatus: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        status: z.enum(["upcoming", "registration", "active", "completed"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await updateSeasonStatus(input.seasonId, input.status);
       return { success: true };
     }),
 
-  adminDeleteSet: protectedProcedure
-    .input(z.object({ reportId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
+  /** Get all entrants for a season (admin) */
+  adminSeasonEntrants: protectedProcedure
+    .input(z.object({ seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-      await adminDeleteSetReport(input.reportId);
-      return { success: true };
+      return getAllSeasonEntrants(input.seasonId);
     }),
 
+  /** Manually mark an entrant as paid */
   adminMarkPaid: protectedProcedure
     .input(z.object({ entrantId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
-      await markEntrantPaid(input.entrantId, "manual-admin");
-      // Send confirmation email
-      const entrant = await getEntrantById(input.entrantId);
-      if (entrant) {
-        // Notify owner
-        await notifyOwner({
-          title: "Entry manually marked as paid",
-          content: `Admin manually marked entrant **${entrant.displayName}** (ID: ${entrant.id}) as paid.`,
-        });
-      }
+      await markSeasonEntrantPaid(input.entrantId, "manual-admin");
+      const entrant = await getSeasonEntrantById(input.entrantId);
+      await notifyOwner({
+        title: "Entry manually marked as paid",
+        content: `Admin manually marked **${entrant?.displayName ?? "unknown"}** as paid.`,
+      });
+      return { success: true };
+    }),
+
+  /** Create a box for a season */
+  adminCreateBox: protectedProcedure
+    .input(
+      z.object({
+        seasonId: z.number(),
+        name: z.string().min(1).max(32),
+        level: z.number().int().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return createBox(input);
+    }),
+
+  /** Assign a season entrant to a box */
+  adminAddBoxMember: protectedProcedure
+    .input(z.object({ boxId: z.number(), seasonEntrantId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await addBoxMember({ boxId: input.boxId, seasonEntrantId: input.seasonEntrantId });
+      return { success: true };
+    }),
+
+  /** Set end-of-season outcome for a box member */
+  adminSetOutcome: protectedProcedure
+    .input(
+      z.object({
+        boxMemberId: z.number(),
+        outcome: z.enum(["promoted", "stayed", "relegated"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await setBoxMemberOutcome(input.boxMemberId, input.outcome);
+      return { success: true };
+    }),
+
+  /** Verify a match result */
+  adminVerifyMatch: protectedProcedure
+    .input(z.object({ matchId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await verifyMatch(input.matchId);
+      return { success: true };
+    }),
+
+  /** Delete a match result and recalculate points */
+  adminDeleteMatch: protectedProcedure
+    .input(z.object({ matchId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await deleteMatch(input.matchId);
       return { success: true };
     }),
 
   // ════════════════════════════════════════════════════════════════════════════
-  // PARTNER PAIRING PROCEDURES
+  // PARTNER FINDER
   // ════════════════════════════════════════════════════════════════════════════
 
-  /** List all open partner slots (excluding the current player's own slots) */
   partnerSlots: protectedProcedure.query(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    return getOpenPartnerSlots(entrant?.id);
+    return getOpenPartnerSlots(ctx.user.id);
   }),
 
-  /** Get the current player's own posted slots */
   myPartnerSlots: protectedProcedure.query(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    if (!entrant?.paid) return [];
-    return getMyPartnerSlots(entrant.id);
+    return getMyPartnerSlots(ctx.user.id);
   }),
 
-  /** Post a new availability slot */
   postPartnerSlot: protectedProcedure
     .input(
       z.object({
+        seasonId: z.number(),
         slotDescription: z.string().min(5).max(256),
         notes: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
       if (!entrant?.paid) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -257,71 +402,53 @@ export const tournamentRouter = router({
         });
       }
       return createPartnerSlot({
-        entrantId: entrant.id,
+        seasonEntrantId: entrant.id,
+        userId: ctx.user.id,
         slotDescription: input.slotDescription,
         notes: input.notes ?? null,
       });
     }),
 
-  /** Close / withdraw an availability slot */
   closePartnerSlot: protectedProcedure
     .input(z.object({ slotId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
-      if (!entrant) throw new TRPCError({ code: "NOT_FOUND" });
-      await closePartnerSlot(input.slotId, entrant.id);
+      await closePartnerSlot(input.slotId, ctx.user.id);
       return { success: true };
     }),
 
-  /** Send a match request to the owner of a slot */
   sendMatchRequest: protectedProcedure
     .input(
       z.object({
         slotId: z.number(),
-        toEntrantId: z.number(),
+        toUserId: z.number(),
         message: z.string().max(500).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
-      if (!entrant?.paid) {
-        throw new TRPCError({
-          code: "FORBIDDEN",
-          message: "You must be a paid entrant to send match requests.",
-        });
-      }
-      if (entrant.id === input.toEntrantId) {
+      if (ctx.user.id === input.toUserId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot request yourself." });
       }
       const req = await createMatchRequest({
         slotId: input.slotId,
-        toEntrantId: input.toEntrantId,
-        fromEntrantId: entrant.id,
+        toUserId: input.toUserId,
+        fromUserId: ctx.user.id,
         message: input.message ?? null,
       });
-      // Notify the recipient via owner notification (stand-in for direct email)
       await notifyOwner({
-        title: `New match request from ${entrant.displayName}`,
-        content: `**${entrant.displayName}** has sent a match request to entrant ID ${input.toEntrantId}.\n\nMessage: ${input.message ?? "(none)"}`,
+        title: `New match request from user ${ctx.user.id}`,
+        content: `User **${ctx.user.name ?? ctx.user.id}** sent a match request.\n\nMessage: ${input.message ?? "(none)"}`,
       });
       return req;
     }),
 
-  /** Get incoming match requests for the current player */
   incomingRequests: protectedProcedure.query(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    if (!entrant) return [];
-    return getIncomingRequests(entrant.id);
+    return getIncomingRequests(ctx.user.id);
   }),
 
-  /** Get outgoing match requests sent by the current player */
   outgoingRequests: protectedProcedure.query(async ({ ctx }) => {
-    const entrant = await getEntrantByUserId(ctx.user.id);
-    if (!entrant) return [];
-    return getOutgoingRequests(entrant.id);
+    return getOutgoingRequests(ctx.user.id);
   }),
 
-  /** Accept or decline a match request */
   respondToRequest: protectedProcedure
     .input(
       z.object({
@@ -330,9 +457,7 @@ export const tournamentRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const entrant = await getEntrantByUserId(ctx.user.id);
-      if (!entrant) throw new TRPCError({ code: "NOT_FOUND" });
-      await respondToMatchRequest(input.requestId, entrant.id, input.status);
+      await respondToMatchRequest(input.requestId, ctx.user.id, input.status);
       return { success: true };
     }),
 });

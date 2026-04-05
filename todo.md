@@ -28,3 +28,20 @@
 - [x] Partner pairing: view incoming/outgoing requests with status
 - [x] Navigation: add Admin and Partner Finder links for appropriate users
 - [x] Vitest tests for new routers (21 tests passing)
+
+## Round 3 — Full Seasonal Box League Rebuild
+
+- [ ] Schema: seasons, boxes, box_members, matches, year_points tables
+- [ ] Push new schema to database
+- [ ] Backend: season management (create, open/close, seed boxes by ability)
+- [ ] Backend: match reporting with rotating partner validation
+- [ ] Backend: points calculation (2 pts win / 1 pt loss) + year accumulator
+- [ ] Backend: promotion/relegation logic between seasons
+- [ ] Backend: admin procedures (manage seasons, boxes, verify results)
+- [ ] Backend: partner availability and match arrangement
+- [ ] Frontend: Home page with seasonal structure and competition overview
+- [ ] Frontend: My Season page (box, fixtures, results, points)
+- [ ] Frontend: Leaderboard (seasonal box standings + year-long accumulator)
+- [ ] Frontend: Partner Finder (post availability, rotating partner rule enforced)
+- [ ] Frontend: Admin panel (season setup, box seeding, result management)
+- [ ] Vitest tests for all new routers

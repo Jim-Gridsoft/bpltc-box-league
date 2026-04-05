@@ -8,7 +8,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import Stripe from "stripe";
-import { markEntrantPaid, getEntrantById } from "../tournament.db";
+import { markSeasonEntrantPaid, getSeasonEntrantById } from "../tournament.db";
 import { notifyOwner } from "./notification";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -65,10 +65,10 @@ async function startServer() {
       if (entrantId) {
         try {
           const eid = parseInt(entrantId);
-          await markEntrantPaid(eid, paymentIntentId);
-          console.log(`[Webhook] Entrant ${entrantId} marked as paid`);
+          await markSeasonEntrantPaid(eid, paymentIntentId);
+          console.log(`[Webhook] Season entrant ${entrantId} marked as paid`);
           // Send confirmation notification
-          const entrant = await getEntrantById(eid);
+          const entrant = await getSeasonEntrantById(eid);
           const customerEmail = session.metadata?.customer_email;
           const customerName = session.metadata?.customer_name ?? entrant?.displayName ?? "Player";
           if (customerEmail) {

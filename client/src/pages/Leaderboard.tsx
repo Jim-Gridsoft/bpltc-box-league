@@ -1,173 +1,213 @@
+import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import TournamentNav from "@/components/TournamentNav";
-import { Trophy, Medal, Star } from "lucide-react";
+import { Trophy, Medal, Star, Users, ChevronDown, ChevronUp } from "lucide-react";
 
-const TARGET = 50;
+const CURRENT_YEAR = 2026;
 
-function RankBadge({ rank }: { rank: number }) {
-  if (rank === 1) return <Trophy size={20} style={{ color: "var(--gold)" }} />;
-  if (rank === 2) return <Medal size={20} style={{ color: "#aaa" }} />;
-  if (rank === 3) return <Medal size={20} style={{ color: "#cd7f32" }} />;
+function getRankIcon(rank: number) {
+  if (rank === 1) return <Trophy className="w-5 h-5 text-yellow-500" />;
+  if (rank === 2) return <Medal className="w-5 h-5 text-slate-400" />;
+  if (rank === 3) return <Medal className="w-5 h-5 text-amber-600" />;
+  return <span className="w-5 h-5 flex items-center justify-center text-sm font-bold text-gray-500">{rank}</span>;
+}
+
+function WinRate({ played, won }: { played: number; won: number }) {
+  if (played === 0) return <span className="text-gray-400">—</span>;
+  const pct = Math.round((won / played) * 100);
   return (
-    <span
-      className="text-sm font-semibold w-6 text-center"
-      style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}
-    >
-      {rank}
+    <span className={pct >= 60 ? "text-green-600 font-semibold" : pct >= 40 ? "text-amber-600" : "text-red-500"}>
+      {pct}%
     </span>
   );
 }
 
+function BoxCard({ boxId, name, level, expanded, onToggle }: {
+  boxId: number; name: string; level: number; expanded: boolean; onToggle: () => void;
+}) {
+  const { data: box } = trpc.tournament.boxDetail.useQuery({ boxId }, { enabled: expanded });
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <button onClick={onToggle} className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-[#1b4332] text-white flex items-center justify-center text-sm font-bold">{level}</div>
+          <span className="font-serif text-lg font-bold text-[#1b4332]">{name}</span>
+        </div>
+        {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+      </button>
+      {expanded && box && (
+        <div className="border-t border-gray-100">
+          {box.members && box.members.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                <tr>
+                  <th className="px-4 py-2 text-left">#</th>
+                  <th className="px-4 py-2 text-left">Player</th>
+                  <th className="px-4 py-2 text-center">Pts</th>
+                  <th className="px-4 py-2 text-center hidden sm:table-cell">P</th>
+                  <th className="px-4 py-2 text-center hidden sm:table-cell">W</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {box.members.map((m, i) => (
+                  <tr key={m.id}>
+                    <td className="px-4 py-2 text-gray-500">{i + 1}</td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{m.displayName}</td>
+                    <td className="px-4 py-2 text-center font-bold text-[#1b4332]">{m.seasonPoints}</td>
+                    <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{m.matchesPlayed}</td>
+                    <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{m.matchesWon}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="px-6 py-4 text-gray-400 text-sm">Players will be assigned to this box when the season opens.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Leaderboard() {
-  const { data: players, isLoading } = trpc.tournament.leaderboard.useQuery();
+  const [showYear, setShowYear] = useState(false);
+  const [expandedBox, setExpandedBox] = useState<number | null>(null);
+
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const { data: seasonLeaderboard, isLoading: loadingSeason } = trpc.tournament.seasonLeaderboard.useQuery(
+    { seasonId: currentSeason?.id ?? 0 },
+    { enabled: !!currentSeason }
+  );
+  const { data: yearLeaderboard, isLoading: loadingYear } = trpc.tournament.yearLeaderboard.useQuery(
+    { year: CURRENT_YEAR },
+    { enabled: showYear }
+  );
+  const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
+    { seasonId: currentSeason?.id ?? 0 },
+    { enabled: !!currentSeason }
+  );
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--cream)" }}>
+    <div className="min-h-screen bg-[#faf6ee]">
       <TournamentNav />
-
-      {/* Header */}
-      <div
-        className="py-12 border-b"
-        style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.1)" }}
-      >
-        <div className="container text-center">
-          <span
-            className="label-tag"
-            style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
-          >
-            Live Rankings
-          </span>
-          <h1
-            className="text-5xl font-bold mt-2"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--cream)" }}
-          >
-            Leaderboard
-          </h1>
-          <p className="mt-2 text-base" style={{ color: "rgba(250,246,238,0.7)" }}>
-            BPLTC Men's Doubles Ladder 2026 · Target: {TARGET} sets won
-          </p>
+      <div className="relative bg-[#1b4332] text-white py-14 px-4 text-center">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3">Leaderboard</h1>
+          <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : "BPLTC Men's Doubles Box League 2026"}</p>
         </div>
       </div>
+      <div className="max-w-4xl mx-auto px-4 py-10 space-y-10">
+        <div className="flex gap-2 justify-center">
+          <button onClick={() => setShowYear(false)} className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${!showYear ? "bg-[#1b4332] text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>Season Standings</button>
+          <button onClick={() => setShowYear(true)} className={`px-5 py-2 rounded-full text-sm font-semibold transition-colors ${showYear ? "bg-[#1b4332] text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}>Year Accumulator {CURRENT_YEAR}</button>
+        </div>
 
-      <div className="container py-12 max-w-3xl">
-        {isLoading ? (
-          <div className="space-y-3">
-            {[...Array(5)].map((_, i) => (
-              <div
-                key={i}
-                className="h-20 rounded-lg animate-pulse"
-                style={{ background: "var(--cream-dark)" }}
-              />
-            ))}
-          </div>
-        ) : !players || players.length === 0 ? (
-          <div className="text-center py-20">
-            <Trophy size={48} style={{ color: "var(--cream-dark)", margin: "0 auto 16px" }} />
-            <h2
-              className="text-2xl font-semibold"
-              style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-            >
-              No entrants yet
-            </h2>
-            <p className="mt-2" style={{ color: "var(--charcoal-mid)" }}>
-              Be the first to register and start climbing the ladder!
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {players.map((player, i) => {
-              const rank = i + 1;
-              const pct = Math.min(100, Math.round((player.setsWon / TARGET) * 100));
-              const isComplete = player.completed;
-
-              return (
-                <div
-                  key={player.id}
-                  className="rounded-lg border p-5 transition-all duration-200 hover:shadow-md"
-                  style={{
-                    background: isComplete ? "rgba(201,168,76,0.08)" : "#fff",
-                    borderColor: isComplete ? "var(--gold)" : "var(--cream-dark)",
-                    borderWidth: isComplete ? "2px" : "1px",
-                  }}
-                >
-                  <div className="flex items-center gap-4">
-                    {/* Rank */}
-                    <div className="shrink-0 w-8 flex justify-center">
-                      <RankBadge rank={rank} />
-                    </div>
-
-                    {/* Name + progress */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span
-                          className="font-semibold text-lg truncate"
-                          style={{
-                            fontFamily: "'Cormorant Garamond', serif",
-                            color: "var(--green-deep)",
-                          }}
-                        >
-                          {player.displayName}
-                        </span>
-                        {isComplete && (
-                          <span
-                            className="label-tag px-2 py-0.5 rounded-full shrink-0"
-                            style={{
-                              background: "var(--gold)",
-                              color: "var(--green-deep)",
-                              fontFamily: "'Space Grotesk', sans-serif",
-                            }}
-                          >
-                            <Star size={10} className="inline mr-1" />
-                            Complete
-                          </span>
-                        )}
-                      </div>
-                      <div className="progress-bar">
-                        <div
-                          className={`progress-bar-fill${isComplete ? " completed" : ""}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="shrink-0 text-right">
-                      <p
-                        className="text-2xl font-bold"
-                        style={{
-                          fontFamily: "'Cormorant Garamond', serif",
-                          color: isComplete ? "var(--gold)" : "var(--green-deep)",
-                        }}
-                      >
-                        {player.setsWon}
-                        <span
-                          className="text-sm font-normal ml-1"
-                          style={{ color: "var(--charcoal-mid)" }}
-                        >
-                          / {TARGET}
-                        </span>
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: "var(--charcoal-mid)" }}>
-                        {player.setsPlayed} played · {pct}%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+        {!showYear && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-[#c9a84c]" />
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">{currentSeason?.name ?? "Current Season"} — Points Table</h2>
+            </div>
+            {loadingSeason ? (
+              <div className="p-8 text-center text-gray-400">Loading standings…</div>
+            ) : !seasonLeaderboard || seasonLeaderboard.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">
+                <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>No results yet. Matches will appear here once the season begins.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 text-left w-10">#</th>
+                    <th className="px-4 py-3 text-left">Player</th>
+                    <th className="px-4 py-3 text-center">Pts</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell">Played</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell">Won</th>
+                    <th className="px-4 py-3 text-center hidden md:table-cell">Win %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {seasonLeaderboard.map((player, i) => (
+                    <tr key={player.id} className={i < 3 ? "bg-amber-50/40" : ""}>
+                      <td className="px-4 py-3"><div className="flex items-center justify-center">{getRankIcon(i + 1)}</div></td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{player.displayName}</td>
+                      <td className="px-4 py-3 text-center font-bold text-[#1b4332] text-base">{player.seasonPoints}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.matchesPlayed}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.matchesWon}</td>
+                      <td className="px-4 py-3 text-center hidden md:table-cell"><WinRate played={player.matchesPlayed} won={player.matchesWon} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">Points: 2 for a win · 1 for a loss · 0 for a walkover</div>
           </div>
         )}
 
-        {/* Legend */}
-        <div
-          className="mt-8 rounded-lg p-4 border text-sm"
-          style={{ borderColor: "var(--cream-dark)", color: "var(--charcoal-mid)" }}
-        >
-          <p>
-            <strong style={{ color: "var(--green-deep)" }}>Rankings</strong> are ordered by sets
-            won. In the event of a tie, the player who reached 50 sets first is ranked higher. The
-            leaderboard updates in real time as players report results.
-          </p>
+        {showYear && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+              <Star className="w-5 h-5 text-[#c9a84c]" />
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">{CURRENT_YEAR} Year-Long Accumulator</h2>
+            </div>
+            {loadingYear ? (
+              <div className="p-8 text-center text-gray-400">Loading…</div>
+            ) : !yearLeaderboard || yearLeaderboard.length === 0 ? (
+              <div className="p-8 text-center text-gray-400">
+                <Star className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                <p>Year standings will populate as seasons are completed.</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                  <tr>
+                    <th className="px-4 py-3 text-left w-10">#</th>
+                    <th className="px-4 py-3 text-left">Player</th>
+                    <th className="px-4 py-3 text-center">Total Pts</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell">Matches</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell">Seasons</th>
+                    <th className="px-4 py-3 text-center hidden md:table-cell">Win %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {yearLeaderboard.map((player, i) => (
+                    <tr key={player.id} className={i < 3 ? "bg-amber-50/40" : ""}>
+                      <td className="px-4 py-3"><div className="flex items-center justify-center">{getRankIcon(i + 1)}</div></td>
+                      <td className="px-4 py-3 font-medium text-gray-800">{player.displayName ?? "—"}</td>
+                      <td className="px-4 py-3 text-center font-bold text-[#1b4332] text-base">{player.totalPoints}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.totalMatchesPlayed}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.seasonsEntered}</td>
+                      <td className="px-4 py-3 text-center hidden md:table-cell"><WinRate played={player.totalMatchesPlayed} won={player.totalMatchesWon} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div className="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">Accumulated across all four 3-month seasons. Awards presented at the end-of-year social.</div>
+          </div>
+        )}
+
+        {!showYear && boxes && boxes.length > 0 && (
+          <div className="space-y-4">
+            <h2 className="font-serif text-2xl font-bold text-[#1b4332]">Box Standings</h2>
+            {boxes.map((box) => (
+              <BoxCard key={box.id} boxId={box.id} name={box.name} level={box.level}
+                expanded={expandedBox === box.id}
+                onToggle={() => setExpandedBox(expandedBox === box.id ? null : box.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="bg-[#1b4332] text-white rounded-2xl p-6">
+          <h3 className="font-serif text-xl font-bold mb-4 text-[#c9a84c]">How Points Work</h3>
+          <div className="grid sm:grid-cols-3 gap-4 text-sm">
+            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">2</div><div className="text-green-200">Points for a win</div></div>
+            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">1</div><div className="text-green-200">Point for a loss</div></div>
+            <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">0</div><div className="text-green-200">Walkover / no-show</div></div>
+          </div>
+          <p className="text-green-200 text-sm mt-4">Partners rotate each match — you cannot play with the same partner twice in a season. Every player earns points for competing, not just the winners.</p>
         </div>
       </div>
     </div>
