@@ -227,3 +227,9 @@
 - [x] reportMatch: skip points for players NOT in balancerEligiblePlayers on balancer fixtures
 - [x] UI: update balancer badge/notice to explain which players score and which do not
 - [x] Tests: cover per-player eligibility logic (22 new tests, 55 total passing)
+
+## Round 25 — Fix Fixture Generation Failure
+
+- [x] Diagnose fixture generation error: migration timing issue — balancerEligiblePlayers column not yet in remote DB
+- [x] Fix root cause: ran pnpm db:push to apply migration, restarted server
+- [x] Verified: 0 TypeScript errors, 55/55 tests passing, server running cleanly
