@@ -92,7 +92,7 @@ export default function Leaderboard() {
       <TournamentNav />
       <div className="relative bg-[#1b4332] text-white py-14 px-4 text-center">
         <div className="max-w-3xl mx-auto">
-          <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3">Leaderboard</h1>
+          <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3">Standings</h1>
           <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : "BPLTC Men's Doubles Box League 2026"}</p>
         </div>
       </div>

@@ -10,7 +10,7 @@ export default function TournamentNav() {
 
   const navLinks = [
     { href: "/", label: "Home", icon: Home },
-    { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+    { href: "/leaderboard", label: "Standings", icon: Trophy },
     ...(isAuthenticated ? [{ href: "/dashboard", label: "My Dashboard", icon: LayoutDashboard }] : []),
     ...(isAuthenticated ? [{ href: "/partners", label: "Partner Finder", icon: Users }] : []),
     ...(isAuthenticated && user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }] : []),
@@ -32,7 +32,7 @@ export default function TournamentNav() {
             className="font-semibold text-lg cursor-pointer"
             style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
           >
-            BPLTC Doubles Ladder 2026
+            BPLTC Doubles Box League 2026
           </span>
         </Link>
 

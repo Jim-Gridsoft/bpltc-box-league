@@ -45,3 +45,12 @@
 - [ ] Frontend: Partner Finder (post availability, rotating partner rule enforced)
 - [ ] Frontend: Admin panel (season setup, box seeding, result management)
 - [ ] Vitest tests for all new routers
+
+## Round 4 — Box League Copy & UI Update
+
+- [ ] Home page: update hero, stats bar, how it works section, full rules, awards
+- [ ] Leaderboard page: rename to Box League Standings, update column headers and descriptions
+- [ ] Dashboard page: update registration form, match reporting, my results section
+- [ ] PartnerFinder page: update copy to reference box matches and seasonal context
+- [ ] Admin page: update season management, box management, and entrant management copy
+- [ ] TournamentNav: update site title and nav labels

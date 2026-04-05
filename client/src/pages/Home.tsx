@@ -3,7 +3,18 @@ import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import TournamentNav from "@/components/TournamentNav";
-import { Trophy, Calendar, CreditCard, BarChart3, CheckCircle2, LayoutDashboard } from "lucide-react";
+import {
+  Trophy,
+  Calendar,
+  CreditCard,
+  BarChart3,
+  LayoutDashboard,
+  Users,
+  RefreshCw,
+  Star,
+  ArrowUpDown,
+  CheckCircle2,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 
 const HERO_IMAGE =
@@ -33,48 +44,99 @@ const HOW_IT_WORKS = [
   {
     icon: CreditCard,
     title: "Register & Pay",
-    body: "Sign in, enter your display name, and pay the £20 entry fee securely via card. Your place on the ladder is confirmed instantly.",
+    body: "Sign in, enter your display name and ability rating, then pay the £20 seasonal entry fee. Your place in the box league is confirmed instantly.",
   },
   {
-    icon: Calendar,
-    title: "Play Your Sets",
-    body: "Arrange doubles sets with other members throughout the year. The target is 50 sets won between 1 April 2026 and 31 March 2027.",
+    icon: Users,
+    title: "Get Placed in a Box",
+    body: "The committee seeds players into ability-matched boxes of 6–8. You will play every other player in your box over the 3-month season — roughly one match per month.",
+  },
+  {
+    icon: RefreshCw,
+    title: "Arrange Matches with Rotating Partners",
+    body: "Use the Partner Finder to arrange each match. Partners rotate — you cannot play with the same partner twice in a season, keeping things fresh and social.",
   },
   {
     icon: BarChart3,
-    title: "Report Results",
-    body: "Log each set result in your personal dashboard — opponent name, score, and date. Your leaderboard position updates immediately.",
+    title: "Report Results & Earn Points",
+    body: "Log match results in your dashboard. Win a match and earn 2 points; lose but play and earn 1 point. Every game counts — effort is always rewarded.",
+  },
+  {
+    icon: ArrowUpDown,
+    title: "Promotion & Relegation",
+    body: "At the end of each season, the top players in each box are promoted and the bottom players are relegated. New season, new challenge.",
   },
   {
     icon: Trophy,
-    title: "Climb the Ladder",
-    body: "Track your progress on the live leaderboard. The first player to reach 50 sets wins the tournament. Good luck!",
+    title: "Compete for Year-Long Honours",
+    body: "Points accumulate across all four seasons into a year-long table. Five awards are presented at the end-of-year celebration — including Best Improver and Spirit of the Club.",
   },
 ];
 
+const SEASONS = [
+  { name: "Spring", dates: "1 Apr – 30 Jun 2026" },
+  { name: "Summer", dates: "1 Jul – 30 Sep 2026" },
+  { name: "Autumn", dates: "1 Oct – 31 Dec 2026" },
+  { name: "Winter", dates: "1 Jan – 31 Mar 2027" },
+];
+
 const RULES = [
-  "Entry fee is £20 per player, payable online at registration.",
-  "The tournament runs from 1 April 2026 to 31 March 2027.",
-  "Sets must be doubles sets played at Bramhall Park LTC.",
-  "Each player must reach 50 sets won to complete the challenge.",
-  "Results are self-reported and subject to club committee verification.",
-  "The first player to reach 50 sets wins the tournament.",
-  "In the event of a tie, the earlier completion date takes precedence.",
-  "Entry fees are non-refundable after payment.",
+  "Entry fee is £20 per player per season. A full-year entry (all four seasons) is available at a discounted rate of £60.",
+  "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
+  "Players are seeded into ability-matched boxes of 6–8 players by the committee at the start of each season.",
+  "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
+  "Partners rotate each match — you may not partner the same player more than once per season.",
+  "Points are awarded as follows: 2 points for a match won, 1 point for a match played and lost, 0 points for a match not played.",
+  "Box standings are determined by points, then by matches won, then by sets won.",
+  "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
+  "Year-long points accumulate across all four seasons and determine the overall annual champion.",
+  "Results are self-reported via the website and are subject to committee verification.",
+  "The committee reserves the right to amend or remove any result that appears inaccurate.",
+  "Entry fees are non-refundable once a season has commenced.",
+];
+
+const AWARDS = [
+  {
+    icon: Trophy,
+    title: "Annual Champion",
+    desc: "The player with the most accumulated points across all four seasons.",
+  },
+  {
+    icon: Star,
+    title: "Seasonal Box Winners",
+    desc: "The top player in each box at the end of every season.",
+  },
+  {
+    icon: Calendar,
+    title: "Most Committed",
+    desc: "The player who has played the most matches across the year — regardless of win rate.",
+  },
+  {
+    icon: ArrowUpDown,
+    title: "Best Improver",
+    desc: "The player who has gained the most box divisions over the course of the year.",
+  },
+  {
+    icon: Users,
+    title: "Spirit of the Club",
+    desc: "A committee nomination for the player who best embodies the values of BPLTC.",
+  },
 ];
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
   const heroRef = useFadeUp();
   const howRef = useFadeUp();
+  const seasonsRef = useFadeUp();
   const rulesRef = useFadeUp();
+  const awardsRef = useFadeUp();
 
   return (
     <div className="min-h-screen" style={{ background: "var(--cream)" }}>
       <TournamentNav />
 
       {/* Hero */}
-      <header className="relative overflow-hidden" style={{ minHeight: "520px" }}>
+      <header className="relative overflow-hidden" style={{ minHeight: "540px" }}>
         <img
           src={HERO_IMAGE}
           alt="Men's doubles tennis at Bramhall Park LTC"
@@ -85,7 +147,7 @@ export default function Home() {
           className="absolute inset-0"
           style={{
             background:
-              "linear-gradient(to right, rgba(27,67,50,0.90) 0%, rgba(27,67,50,0.65) 50%, rgba(27,67,50,0.2) 100%)",
+              "linear-gradient(to right, rgba(27,67,50,0.92) 0%, rgba(27,67,50,0.68) 55%, rgba(27,67,50,0.2) 100%)",
           }}
         />
         <div className="relative container flex flex-col justify-end pb-16 pt-24">
@@ -100,14 +162,14 @@ export default function Home() {
               className="text-5xl md:text-6xl font-bold mb-4 leading-tight"
               style={{ fontFamily: "'Cormorant Garamond', serif", color: "#faf6ee" }}
             >
-              Men's Doubles<br />Ladder Tournament
+              Men's Doubles<br />Box League
             </h1>
             <p
               className="text-lg md:text-xl leading-relaxed mb-8"
               style={{ color: "rgba(250,246,238,0.85)", fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300 }}
             >
-              Play 50 sets over the course of the year. Track your progress. Compete for the title.
-              Entry is just £20 — all proceeds go directly to the club.
+              Four 3-month seasons. Ability-matched boxes. Rotating partners. Promotion and relegation.
+              Compete for the title — and earn points for every match you play. Entry is just £20 per season.
             </p>
             <div className="flex flex-wrap gap-3">
               {isAuthenticated ? (
@@ -137,7 +199,7 @@ export default function Home() {
                   style={{ borderColor: "rgba(250,246,238,0.5)", color: "#faf6ee", background: "transparent" }}
                 >
                   <BarChart3 size={16} className="mr-2" />
-                  View Leaderboard
+                  View Standings
                 </Button>
               </Link>
             </div>
@@ -152,10 +214,10 @@ export default function Home() {
       >
         <div className="container grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {[
-            { value: "50", label: "Sets to Win" },
-            { value: "£20", label: "Entry Fee" },
-            { value: "1 Apr 2026", label: "Start Date" },
-            { value: "31 Mar 2027", label: "End Date" },
+            { value: "4", label: "Seasons Per Year" },
+            { value: "£20", label: "Entry Per Season" },
+            { value: "2 pts", label: "For a Win" },
+            { value: "1 pt", label: "For Playing & Losing" },
           ].map(({ value, label }) => (
             <div key={label}>
               <p
@@ -187,10 +249,10 @@ export default function Home() {
                 className="text-4xl font-semibold mt-2"
                 style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
               >
-                Four Simple Steps
+                Six Simple Steps
               </h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {HOW_IT_WORKS.map(({ icon: Icon, title, body }, i) => (
                 <div
                   key={title}
@@ -227,6 +289,101 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Season Calendar */}
+      <section className="py-16 border-b" style={{ borderColor: "var(--cream-dark)" }}>
+        <div className="container max-w-3xl">
+          <div ref={seasonsRef} className="fade-up">
+            <div className="mb-8 text-center">
+              <span
+                className="label-tag"
+                style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
+              >
+                Season Calendar
+              </span>
+              <h2
+                className="text-4xl font-semibold mt-2"
+                style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
+              >
+                Four Seasons, One Year
+              </h2>
+              <p className="text-base mt-3" style={{ color: "var(--charcoal-mid)" }}>
+                Each season lasts 3 months. You can enter one season, all four, or any combination —
+                making it easy to dip in and out around holidays and other commitments.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {SEASONS.map(({ name, dates }) => (
+                <div
+                  key={name}
+                  className="rounded-lg p-5 border text-center"
+                  style={{ background: "#fff", borderColor: "var(--cream-dark)" }}
+                >
+                  <p
+                    className="text-2xl font-bold"
+                    style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
+                  >
+                    {name}
+                  </p>
+                  <p className="text-xs mt-2" style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                    {dates}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Awards */}
+      <section className="py-16 border-b" style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.08)" }}>
+        <div className="container">
+          <div ref={awardsRef} className="fade-up">
+            <div className="text-center mb-12">
+              <span
+                className="label-tag"
+                style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
+              >
+                End-of-Year Honours
+              </span>
+              <h2
+                className="text-4xl font-semibold mt-2"
+                style={{ fontFamily: "'Cormorant Garamond', serif", color: "#faf6ee" }}
+              >
+                Five Awards to Compete For
+              </h2>
+              <p className="text-base mt-3 max-w-xl mx-auto" style={{ color: "rgba(250,246,238,0.75)" }}>
+                The best player does not always win. We recognise commitment, improvement, and the spirit of the game — not just results.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+              {AWARDS.map(({ icon: Icon, title, desc }) => (
+                <div
+                  key={title}
+                  className="rounded-lg p-5 border flex flex-col gap-3"
+                  style={{ background: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.12)" }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                    style={{ background: "var(--gold)" }}
+                  >
+                    <Icon size={16} color="var(--green-deep)" />
+                  </div>
+                  <p
+                    className="text-lg font-semibold leading-snug"
+                    style={{ fontFamily: "'Cormorant Garamond', serif", color: "#faf6ee" }}
+                  >
+                    {title}
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: "rgba(250,246,238,0.7)" }}>
+                    {desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Rules */}
       <section
         className="py-16 border-b"
@@ -239,7 +396,7 @@ export default function Home() {
                 className="label-tag"
                 style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                Tournament Rules
+                Competition Rules
               </span>
               <h2
                 className="text-4xl font-semibold mt-2"
@@ -275,8 +432,9 @@ export default function Home() {
           >
             Ready to Enter?
           </h2>
-          <p className="text-lg mb-8" style={{ color: "var(--charcoal-mid)" }}>
-            Sign in, register your name, and pay the £20 entry fee to secure your place on the ladder.
+          <p className="text-lg mb-8 max-w-lg mx-auto" style={{ color: "var(--charcoal-mid)" }}>
+            Sign in, register your name and ability rating, and pay the £20 seasonal entry fee to secure
+            your place in the Spring 2026 box league.
           </p>
           {isAuthenticated ? (
             <Link href="/dashboard">
@@ -314,7 +472,7 @@ export default function Home() {
             Bramhall Park Lawn Tennis Club — Est. 1926
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)" }}>
-            Centenary Year 2026 · Men's Doubles Ladder Tournament
+            Centenary Year 2026 · Men's Doubles Box League
           </p>
         </div>
       </footer>

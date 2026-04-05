@@ -160,7 +160,7 @@ export default function PartnerFinder() {
             Paid Entrants Only
           </h2>
           <p className="mb-6" style={{ color: "var(--charcoal-mid)" }}>
-            The Partner Finder is available to paid tournament entrants. Register and pay your entry fee to access it.
+            The Partner Finder is available to paid box league entrants. Register for the current season and pay your £20 entry fee to access it.
           </p>
           <Button size="lg" onClick={() => window.location.href = "/dashboard"}
             style={{ background: "var(--green-deep)", color: "var(--cream)" }}>
@@ -189,7 +189,7 @@ export default function PartnerFinder() {
             Partner Finder
           </h1>
           <p className="mt-1 text-sm" style={{ color: "rgba(250,246,238,0.7)" }}>
-            Post your availability or browse other players looking for a doubles partner
+            Post your availability or browse other box league players looking for a rotating doubles partner this season
           </p>
         </div>
       </div>

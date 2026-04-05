@@ -61,7 +61,7 @@ export default function Dashboard() {
       <div className="max-w-md mx-auto px-4 py-24 text-center">
         <Trophy className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
         <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Sign In to Enter</h1>
-        <p className="text-gray-600 mb-8">Create a free account to register for the BPLTC Doubles Box League.</p>
+        <p className="text-gray-600 mb-8">Create a free account to register for the BPLTC Men's Doubles Box League and get placed in an ability-matched box.</p>
         <a href={getLoginUrl()} className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors">Sign In / Register</a>
       </div>
     </div>
@@ -73,7 +73,7 @@ export default function Dashboard() {
         <div className="max-w-4xl mx-auto">
           <p className="text-green-300 text-sm mb-1">Welcome back</p>
           <h1 className="font-serif text-3xl font-bold">{user?.name ?? "Player"}</h1>
-          <p className="text-green-200 mt-1">{activeSeason?.name ?? "BPLTC Doubles Box League"}</p>
+          <p className="text-green-200 mt-1">{activeSeason?.name ?? "BPLTC Men's Doubles Box League"}</p>
         </div>
       </div>
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-8">
@@ -91,7 +91,7 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
         ) : !myEntry ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center gap-3 mb-6"><ClipboardList className="w-6 h-6 text-[#c9a84c]" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">Register for {activeSeason?.name ?? "the current season"}</h2></div>
+            <div className="flex items-center gap-3 mb-6"><ClipboardList className="w-6 h-6 text-[#c9a84c]" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">Register for {activeSeason?.name ?? "the current season"} Box League</h2></div>
             <div className="space-y-4 max-w-sm">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Display Name</label>
@@ -106,20 +106,20 @@ export default function Dashboard() {
                   <option value={4}>4 - Advanced</option>
                   <option value={5}>5 - County / Elite</option>
                 </select>
-                <p className="text-xs text-gray-400 mt-1">Used to seed you into a box with players of similar standard.</p>
+                <p className="text-xs text-gray-400 mt-1">Used to seed you into an ability-matched box. Be honest — you will enjoy the competition more when playing at the right level.</p>
               </div>
               <button onClick={() => activeSeason && registerMutation.mutate({ seasonId: activeSeason.id, displayName: regName, abilityRating: regAbility })}
                 disabled={!regName.trim() || registerMutation.isPending}
                 className="w-full bg-[#1b4332] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                 {registerMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Register - £20 Entry Fee
+                Register for this Season — £20
               </button>
             </div>
           </div>
         ) : !myEntry.paid ? (
           <div className="bg-white rounded-2xl shadow-sm border border-amber-200 p-6">
             <div className="flex items-center gap-3 mb-4"><CreditCard className="w-6 h-6 text-amber-500" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">Complete Your Payment</h2></div>
-            <p className="text-gray-600 text-sm mb-5">You are registered as <strong>{myEntry.displayName}</strong>. Pay the £20 entry fee to confirm your place.</p>
+            <p className="text-gray-600 text-sm mb-5">You are registered as <strong>{myEntry.displayName}</strong> for {activeSeason?.name}. Pay the £20 entry fee to confirm your place in the box league.</p>
             <button onClick={() => myEntry && activeSeason && checkoutMutation.mutate({ seasonId: activeSeason.id })}
               disabled={checkoutMutation.isPending}
               className="bg-[#c9a84c] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b8963d] transition-colors disabled:opacity-50 flex items-center gap-2">
@@ -203,7 +203,7 @@ export default function Dashboard() {
             </div>
             {myMatches && myMatches.length > 0 && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-[#c9a84c]" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">My Match History</h2></div>
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2"><ClipboardList className="w-5 h-5 text-[#c9a84c]" /><h2 className="font-serif text-xl font-bold text-[#1b4332]">My Box League Match History</h2></div>
                 <div className="divide-y divide-gray-50">
                   {myMatches.map((m) => {
                     const iWon = (m.player1Id === myEntry.id || m.partner1Id === myEntry.id) ? m.winner === "A" : m.winner === "B";
