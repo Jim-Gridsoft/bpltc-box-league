@@ -47,6 +47,8 @@ import {
   getAllFixturesBySeason,
   sandboxResetAndRegenerate,
   getFixtureBalanceSummary,
+  removePlayerFromSeason,
+  getRemovePlayerPreview,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -762,5 +764,56 @@ export const tournamentRouter = router({
     .query(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       return getFixtureBalanceSummary(input.seasonId);
+    }),
+
+  /**
+   * Admin: preview what will be deleted when removing a player from a season.
+   * Returns a summary (match count, fixture count, paid status) before confirming.
+   */
+  adminRemovePlayerPreview: protectedProcedure
+    .input(z.object({ seasonEntrantId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return getRemovePlayerPreview(input.seasonEntrantId);
+    }),
+
+  /**
+   * Admin: permanently remove a player from a season.
+   * Cascades through: matches (with points reversal), fixtures, box membership,
+   * partner slots, match requests, and the season entrant record.
+   *
+   * Additional validation:
+   *   - Admin cannot remove themselves.
+   *   - Requires explicit confirmation string matching the player's display name.
+   */
+  adminRemovePlayer: protectedProcedure
+    .input(
+      z.object({
+        seasonEntrantId: z.number(),
+        /** Must match the player's displayName exactly — prevents accidental deletions */
+        confirmationName: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+
+      // Fetch the entrant to validate the confirmation name
+      const preview = await getRemovePlayerPreview(input.seasonEntrantId);
+
+      if (input.confirmationName.trim() !== preview.displayName.trim()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Confirmation name does not match. Expected "${preview.displayName}".`,
+        });
+      }
+
+      const result = await removePlayerFromSeason(input.seasonEntrantId);
+
+      await notifyOwner({
+        title: `Player removed from season`,
+        content: `Admin ${ctx.user.name ?? ctx.user.id} removed player "${result.displayName}" from the season. ${result.matchesDeleted} match(es) and ${result.fixturesDeleted} fixture(s) were deleted.`,
+      });
+
+      return result;
     }),
 });

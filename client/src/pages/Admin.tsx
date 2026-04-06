@@ -161,6 +161,30 @@ export default function Admin() {
     { enabled: (activeSeason?.id ?? 0) > 0 }
   );
 
+  // Remove player state
+  const [removePlayerEntrantId, setRemovePlayerEntrantId] = useState<number | null>(null);
+  const [removePlayerStep, setRemovePlayerStep] = useState<1 | 2>(1);
+  const [removePlayerConfirmName, setRemovePlayerConfirmName] = useState("");
+
+  const { data: removePlayerPreview, isLoading: removePlayerPreviewLoading } =
+    trpc.tournament.adminRemovePlayerPreview.useQuery(
+      { seasonEntrantId: removePlayerEntrantId ?? 0 },
+      { enabled: removePlayerEntrantId !== null }
+    );
+
+  const removePlayerMutation = trpc.tournament.adminRemovePlayer.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.displayName} has been removed from the season.`);
+      setRemovePlayerEntrantId(null);
+      setRemovePlayerStep(1);
+      setRemovePlayerConfirmName("");
+      utils.tournament.adminSeasonEntrants.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+      utils.tournament.fixtureBalanceSummary.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
   const verifyMatchMutation = trpc.tournament.adminVerifyMatch.useMutation({
     onSuccess: () => { toast.success("Match verified."); },
     onError: (e: { message: string }) => toast.error(e.message),
@@ -285,15 +309,23 @@ export default function Admin() {
                             <p><strong>Matches Won:</strong> {e.matchesWon}</p>
                             {e.stripePaymentIntentId && <p><strong>Stripe PI:</strong> {e.stripePaymentIntentId}</p>}
                           </div>
-                          {!e.paid && (
+                          <div className="ml-auto flex items-center gap-2 flex-wrap">
+                            {!e.paid && (
+                              <button
+                                onClick={() => markPaidMutation.mutate({ entrantId: e.id })}
+                                disabled={markPaidMutation.isPending}
+                                className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                                {markPaidMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                                Mark as Paid
+                              </button>
+                            )}
                             <button
-                              onClick={() => markPaidMutation.mutate({ entrantId: e.id })}
-                              disabled={markPaidMutation.isPending}
-                              className="ml-auto self-start bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2">
-                              {markPaidMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
-                              Mark as Paid
+                              onClick={(ev) => { ev.stopPropagation(); setRemovePlayerEntrantId(e.id); setRemovePlayerStep(1); setRemovePlayerConfirmName(""); }}
+                              className="bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-100 transition-colors flex items-center gap-2">
+                              <Trash2 className="w-3 h-3" />
+                              Remove Player
                             </button>
-                          )}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -946,10 +978,100 @@ export default function Admin() {
           </div>
         )}
       </div>
+
+      {/* ── Remove Player Confirmation Dialog ─────────────────────────────── */}
+      {removePlayerEntrantId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            {removePlayerPreviewLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-[#1b4332]" />
+              </div>
+            ) : removePlayerPreview ? (
+              <>
+                {removePlayerStep === 1 && (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <Trash2 className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-serif text-lg font-bold text-gray-900">Remove Player</h3>
+                        <p className="text-sm text-gray-500">This action cannot be undone.</p>
+                      </div>
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 space-y-2 text-sm">
+                      <p><strong className="text-gray-700">Player:</strong> <span className="text-gray-900">{removePlayerPreview.displayName}</span></p>
+                      <p><strong className="text-gray-700">Fixtures to delete:</strong> <span className="text-red-700 font-semibold">{removePlayerPreview.fixtureCount}</span></p>
+                      <p><strong className="text-gray-700">Matches to delete:</strong> <span className="text-red-700 font-semibold">{removePlayerPreview.matchCount}</span></p>
+                      {removePlayerPreview.isPaid && (
+                        <p className="text-amber-700 font-semibold">⚠️ This player has paid their entry fee. Removing them will not issue a refund automatically.</p>
+                      )}
+                      {removePlayerPreview.hasPlayedMatches && (
+                        <p className="text-amber-700 font-semibold">⚠️ This player has played matches. Removing them will delete those results and recalculate other players&apos; points.</p>
+                      )}
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setRemovePlayerEntrantId(null); setRemovePlayerStep(1); }}
+                        className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors">
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => setRemovePlayerStep(2)}
+                        className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors">
+                        Continue
+                      </button>
+                    </div>
+                  </>
+                )}
+                {removePlayerStep === 2 && (
+                  <>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                        <Trash2 className="w-5 h-5 text-red-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-serif text-lg font-bold text-gray-900">Confirm Removal</h3>
+                        <p className="text-sm text-gray-500">Type the player&apos;s name to confirm.</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">
+                      To permanently remove <strong>{removePlayerPreview.displayName}</strong>, type their exact name below:
+                    </p>
+                    <input
+                      type="text"
+                      value={removePlayerConfirmName}
+                      onChange={(ev) => setRemovePlayerConfirmName(ev.target.value)}
+                      placeholder={removePlayerPreview.displayName}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-red-400"
+                    />
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setRemovePlayerStep(1)}
+                        className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors">
+                        Back
+                      </button>
+                      <button
+                        onClick={() => removePlayerMutation.mutate({ seasonEntrantId: removePlayerEntrantId, confirmationName: removePlayerConfirmName })}
+                        disabled={removePlayerMutation.isPending || removePlayerConfirmName.trim() !== removePlayerPreview.displayName.trim()}
+                        className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-40 flex items-center justify-center gap-2">
+                        {removePlayerMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                        Remove Player
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-red-600 py-4">Could not load player data. Please try again.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
 function BoxFixtureRow({ box }: { box: { id: number; name: string } }) {
   const [expanded, setExpanded] = useState(false);
   const { data: fixtures } = trpc.tournament.boxFixtures.useQuery({ boxId: box.id }, { enabled: expanded });
@@ -1143,14 +1265,14 @@ function DisputesTab() {
                   </div>
                 </div>
               )}
-            </div>
+             </div>
           ))}
         </div>
       )}
+
     </div>
   );
 }
-
 // ── AdminFixtureEntry ─────────────────────────────────────────────────────────
 
 /**
@@ -1410,10 +1532,11 @@ function AdminFixtureEntry({
                   </div>
                 );
               })}
-            </div>
+             </div>
           ))}
         </div>
       )}
+
     </div>
   );
 }

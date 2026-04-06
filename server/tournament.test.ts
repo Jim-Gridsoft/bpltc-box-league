@@ -48,6 +48,8 @@ vi.mock("./tournament.db", () => ({
   deleteSeason: vi.fn().mockResolvedValue(undefined),
   endSeason: vi.fn().mockResolvedValue({ promoted: [], relegated: [], stayed: [] }),
   getAllMatchesBySeason: vi.fn().mockResolvedValue([]),
+  getRemovePlayerPreview: vi.fn().mockResolvedValue({ displayName: "Alice Smith", matchCount: 2, fixtureCount: 5, isPaid: true, hasPlayedMatches: true }),
+  removePlayerFromSeason: vi.fn().mockResolvedValue({ displayName: "Alice Smith", matchesDeleted: 2, fixturesDeleted: 5 }),
 }));
 
 // Mock notification helper so tests don't make real HTTP calls
@@ -392,5 +394,52 @@ describe("tournament.fixtureBalanceSummary (admin only)", () => {
     const caller = appRouter.createCaller(makeAdminCtx());
     const result = await caller.tournament.fixtureBalanceSummary({ seasonId: 1 });
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe("tournament.adminRemovePlayerPreview (admin only)", () => {
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.adminRemovePlayerPreview({ seasonEntrantId: 1 })).rejects.toThrow();
+  });
+
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.adminRemovePlayerPreview({ seasonEntrantId: 1 })).rejects.toThrow();
+  });
+
+  it("returns preview data for a valid entrant", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.adminRemovePlayerPreview({ seasonEntrantId: 1 });
+    expect(result).toMatchObject({
+      displayName: "Alice Smith",
+      matchCount: 2,
+      fixtureCount: 5,
+      isPaid: true,
+      hasPlayedMatches: true,
+    });
+  });
+});
+
+describe("tournament.adminRemovePlayer (admin only)", () => {
+  it("throws FORBIDDEN for non-admin users", async () => {
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.adminRemovePlayer({ seasonEntrantId: 1, confirmationName: "Alice Smith" })).rejects.toThrow();
+  });
+
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.adminRemovePlayer({ seasonEntrantId: 1, confirmationName: "Alice Smith" })).rejects.toThrow();
+  });
+
+  it("throws BAD_REQUEST when confirmation name does not match", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    await expect(caller.tournament.adminRemovePlayer({ seasonEntrantId: 1, confirmationName: "Wrong Name" })).rejects.toThrow("name does not match");
+  });
+
+  it("removes the player when confirmation name matches", async () => {
+    const caller = appRouter.createCaller(makeAdminCtx());
+    const result = await caller.tournament.adminRemovePlayer({ seasonEntrantId: 1, confirmationName: "Alice Smith" });
+    expect(result).toMatchObject({ displayName: "Alice Smith", matchesDeleted: 2, fixturesDeleted: 5 });
   });
 });

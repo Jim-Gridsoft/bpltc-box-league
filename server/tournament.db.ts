@@ -1746,3 +1746,288 @@ export async function buildFixtureScheduleSummary(seasonId: number): Promise<
 
   return Object.values(playerMap).sort((a, b) => a.playerName.localeCompare(b.playerName));
 }
+
+// ── Remove Player ─────────────────────────────────────────────────────────────
+
+/**
+ * Remove a player from a season, cascading through all related data.
+ *
+ * Cascade order:
+ *   1. Find the season entrant record (throws if not found).
+ *   2. Reverse year_points for every match the player participated in.
+ *   3. Recalculate season points for the other three players in each match
+ *      (they keep their points; we just remove the deleted player's contribution).
+ *   4. Delete all matches the player was involved in.
+ *   5. Delete all fixtures the player was assigned to.
+ *   6. Delete the box_members record.
+ *   7. Delete partner_slots and match_requests for this player in this season.
+ *   8. Delete the season_entrant record.
+ *
+ * Returns a summary of what was deleted.
+ */
+export async function removePlayerFromSeason(
+  seasonEntrantId: number
+): Promise<{
+  displayName: string;
+  matchesDeleted: number;
+  fixturesDeleted: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // 1. Fetch the entrant
+  const entrantRows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(eq(seasonEntrants.id, seasonEntrantId))
+    .limit(1);
+  const entrant = entrantRows[0];
+  if (!entrant) throw new Error("Season entrant not found.");
+
+  const { userId, seasonId, displayName } = entrant;
+
+  // 2. Find all matches involving this player
+  const allSeasonMatches = await db
+    .select()
+    .from(matches)
+    .where(eq(matches.seasonId, seasonId));
+
+  const playerMatches = allSeasonMatches.filter(
+    (m) =>
+      m.player1Id === userId ||
+      m.partner1Id === userId ||
+      m.player2Id === userId ||
+      m.partner2Id === userId
+  );
+
+  // 3. Reverse year_points for the removed player and recalculate for others
+  const seasonYear = new Date().getFullYear(); // approximate; use season year if available
+  const seasonRows = await db
+    .select()
+    .from(seasons)
+    .where(eq(seasons.id, seasonId))
+    .limit(1);
+  const year = seasonRows[0]?.year ?? new Date().getFullYear();
+
+  for (const m of playerMatches) {
+    const otherPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter(
+      (pid) => pid !== userId
+    );
+
+    // Reverse year_points for the removed player for this match
+    const onTeamA = m.player1Id === userId || m.partner1Id === userId;
+    const playerWon = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
+    let playerPts = 0;
+    if (playerWon) {
+      playerPts = 2;
+    } else {
+      let setsWon = 0;
+      if (m.score) {
+        for (const set of m.score.trim().split(/\s+/)) {
+          const parts = set.split("-");
+          if (parts.length !== 2) continue;
+          const g0 = parseInt(parts[0], 10);
+          const g1 = parseInt(parts[1], 10);
+          if (isNaN(g0) || isNaN(g1)) continue;
+          const userGames = onTeamA ? g0 : g1;
+          const oppGames = onTeamA ? g1 : g0;
+          if (userGames > oppGames) setsWon++;
+        }
+      }
+      playerPts = setsWon > 0 ? 1 : 0;
+    }
+
+    const existingYP = await db
+      .select()
+      .from(yearPoints)
+      .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year)))
+      .limit(1);
+    if (existingYP[0]) {
+      await db
+        .update(yearPoints)
+        .set({
+          totalPoints: Math.max(0, existingYP[0].totalPoints - playerPts),
+          totalMatchesPlayed: Math.max(0, existingYP[0].totalMatchesPlayed - 1),
+          totalMatchesWon: Math.max(0, existingYP[0].totalMatchesWon - (playerWon ? 1 : 0)),
+        })
+        .where(eq(yearPoints.id, existingYP[0].id));
+    }
+
+    // Recalculate season points for the other three players in this match
+    // (their points are unaffected — the match is simply removed from their history)
+    for (const pid of otherPlayers) {
+      const otherEntrant = await db
+        .select()
+        .from(seasonEntrants)
+        .where(and(eq(seasonEntrants.userId, pid), eq(seasonEntrants.seasonId, seasonId)))
+        .limit(1);
+      if (!otherEntrant[0]) continue;
+
+      // Remaining matches for this player after removing the deleted player's matches
+      const remainingMatches = allSeasonMatches.filter(
+        (x) =>
+          (x.player1Id === pid ||
+            x.partner1Id === pid ||
+            x.player2Id === pid ||
+            x.partner2Id === pid) &&
+          // Exclude matches that are about to be deleted (those involving the removed player)
+          x.player1Id !== userId &&
+          x.partner1Id !== userId &&
+          x.player2Id !== userId &&
+          x.partner2Id !== userId
+      );
+
+      let pts = 0;
+      let won = 0;
+      for (const um of remainingMatches) {
+        const onA = um.player1Id === pid || um.partner1Id === pid;
+        const userWon = (onA && um.winner === "A") || (!onA && um.winner === "B");
+        if (userWon) {
+          pts += 2;
+          won++;
+        } else {
+          let setsWonByUser = 0;
+          if (um.score) {
+            for (const set of um.score.trim().split(/\s+/)) {
+              const parts = set.split("-");
+              if (parts.length !== 2) continue;
+              const g0 = parseInt(parts[0], 10);
+              const g1 = parseInt(parts[1], 10);
+              if (isNaN(g0) || isNaN(g1)) continue;
+              const userGames = onA ? g0 : g1;
+              const oppGames = onA ? g1 : g0;
+              if (userGames > oppGames) setsWonByUser++;
+            }
+          }
+          pts += setsWonByUser > 0 ? 1 : 0;
+        }
+      }
+
+      await db
+        .update(seasonEntrants)
+        .set({ seasonPoints: pts, matchesPlayed: remainingMatches.length, matchesWon: won })
+        .where(eq(seasonEntrants.id, otherEntrant[0].id));
+    }
+  }
+
+  // 4. Delete all matches involving this player
+  const matchesDeleted = playerMatches.length;
+  for (const m of playerMatches) {
+    await db.delete(matches).where(eq(matches.id, m.id));
+  }
+
+  // 5. Delete all fixtures involving this player (by userId in any slot)
+  const playerFixtures = await db
+    .select()
+    .from(fixtures)
+    .where(
+      and(
+        eq(fixtures.seasonId, seasonId),
+        // We can't use OR in drizzle easily for 4 columns, so fetch all and filter
+      )
+    );
+  // Fetch all season fixtures and filter in JS
+  const allSeasonFixtures = await db
+    .select()
+    .from(fixtures)
+    .where(eq(fixtures.seasonId, seasonId));
+
+  const fixturesToDelete = allSeasonFixtures.filter(
+    (f) =>
+      f.teamAPlayer1 === userId ||
+      f.teamAPlayer2 === userId ||
+      f.teamBPlayer1 === userId ||
+      f.teamBPlayer2 === userId
+  );
+
+  const fixturesDeleted = fixturesToDelete.length;
+  for (const f of fixturesToDelete) {
+    await db.delete(fixtures).where(eq(fixtures.id, f.id));
+  }
+
+  // 6. Delete box_members record
+  await db
+    .delete(boxMembers)
+    .where(eq(boxMembers.seasonEntrantId, seasonEntrantId));
+
+  // 7. Delete partner_slots and match_requests for this player in this season
+  const slots = await db
+    .select()
+    .from(partnerSlots)
+    .where(
+      and(eq(partnerSlots.seasonEntrantId, seasonEntrantId))
+    );
+  for (const slot of slots) {
+    await db.delete(matchRequests).where(eq(matchRequests.slotId, slot.id));
+    await db.delete(partnerSlots).where(eq(partnerSlots.id, slot.id));
+  }
+  // Also delete match requests sent by or to this user
+  await db.delete(matchRequests).where(eq(matchRequests.fromUserId, userId));
+  await db.delete(matchRequests).where(eq(matchRequests.toUserId, userId));
+
+  // 8. Delete the season entrant record
+  await db.delete(seasonEntrants).where(eq(seasonEntrants.id, seasonEntrantId));
+
+  return { displayName, matchesDeleted, fixturesDeleted };
+}
+
+/**
+ * Fetch a preview of what will be deleted when removing a player from a season.
+ * Used to show the admin a summary before confirming.
+ */
+export async function getRemovePlayerPreview(
+  seasonEntrantId: number
+): Promise<{
+  displayName: string;
+  matchCount: number;
+  fixtureCount: number;
+  isPaid: boolean;
+  hasPlayedMatches: boolean;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const entrantRows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(eq(seasonEntrants.id, seasonEntrantId))
+    .limit(1);
+  const entrant = entrantRows[0];
+  if (!entrant) throw new Error("Season entrant not found.");
+
+  const { userId, seasonId, displayName, paid, matchesPlayed } = entrant;
+
+  const allSeasonMatches = await db
+    .select()
+    .from(matches)
+    .where(eq(matches.seasonId, seasonId));
+
+  const playerMatchCount = allSeasonMatches.filter(
+    (m) =>
+      m.player1Id === userId ||
+      m.partner1Id === userId ||
+      m.player2Id === userId ||
+      m.partner2Id === userId
+  ).length;
+
+  const allSeasonFixtures = await db
+    .select()
+    .from(fixtures)
+    .where(eq(fixtures.seasonId, seasonId));
+
+  const playerFixtureCount = allSeasonFixtures.filter(
+    (f) =>
+      f.teamAPlayer1 === userId ||
+      f.teamAPlayer2 === userId ||
+      f.teamBPlayer1 === userId ||
+      f.teamBPlayer2 === userId
+  ).length;
+
+  return {
+    displayName,
+    matchCount: playerMatchCount,
+    fixtureCount: playerFixtureCount,
+    isPaid: paid,
+    hasPlayedMatches: matchesPlayed > 0,
+  };
+}

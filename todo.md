@@ -298,3 +298,14 @@
 - [x] Rules section rule 5: "maximises partner variation so you play with as many different partners as possible"
 - [x] Hero subtitle: "Maximally varied partners" (was "Rotating partners")
 - [x] 81/81 tests passing, 0 TypeScript errors
+
+## Round 34 — Admin Remove Player
+
+- [x] Backend: getRemovePlayerPreview DB function (returns displayName, fixtureCount, matchCount, isPaid, hasPlayedMatches)
+- [x] Backend: removePlayerFromSeason DB function (cascade: reverse year_points for all affected players, delete matches, delete fixtures, remove box member, delete season entrant)
+- [x] Backend: adminRemovePlayerPreview tRPC procedure (admin-only, returns impact summary)
+- [x] Backend: adminRemovePlayer tRPC procedure (admin-only, validates confirmation name before executing)
+- [x] Admin UI: Remove Player button on each entrant row (inside expanded detail panel)
+- [x] Admin UI: Two-step confirmation dialog — Step 1: impact summary (fixtures/matches to delete, paid warning, played matches warning); Step 2: type player name to confirm
+- [x] Tests: 7 new tests (preview access control, preview data, remove access control, name mismatch rejection, successful removal)
+- [x] 88/88 tests passing, 0 TypeScript errors
