@@ -1081,9 +1081,22 @@ interface ScheduledFixture {
 }
 
 /**
- * Build a balanced doubles schedule for a set of player IDs.
- * Every player will play exactly the same number of matches.
- * Balancer fixtures (isBalancer=true) are added at the end if needed.
+ * Build a maximally-varied doubles schedule for a set of player IDs.
+ *
+ * Goals (in priority order):
+ *  1. Every player plays exactly the same number of matches (n-1 regular + balancers if needed).
+ *  2. No two players are partnered more times than necessary.
+ *  3. No two players face each other as opponents more times than necessary.
+ *
+ * Algorithm:
+ *  - Generate all C(n,4)×3 possible fixture splits.
+ *  - Score each candidate by its repetition penalty:
+ *      partnerPenalty = (existing partner count for each team pair) × 10
+ *      opponentPenalty = sum of existing opponent counts across the 4 cross-pairs
+ *  - In each round, greedily pick the lowest-score fixture that doesn't reuse
+ *    a player already assigned in that round and doesn't exceed the target.
+ *  - After Phase 1, add balancer fixtures for any players below the max count,
+ *    again choosing the lowest-repetition combo.
  */
 export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   const n = playerIds.length;
@@ -1104,39 +1117,67 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   }
 
   const matchCount: Record<number, number> = {};
+  const partnerCount: Record<string, number> = {};
+  const opponentCount: Record<string, number> = {};
   playerIds.forEach((p) => (matchCount[p] = 0));
 
+  const pk = (x: number, y: number) => `${Math.min(x, y)}-${Math.max(x, y)}`;
+  const getP = (a: number, b: number) => partnerCount[pk(a, b)] ?? 0;
+  const getO = (a: number, b: number) => opponentCount[pk(a, b)] ?? 0;
+
+  /** Score a fixture by how much repetition it adds (lower = more varied). */
+  const scoreFixture = (f: { teamA: [number, number]; teamB: [number, number] }) => {
+    const [a, b] = f.teamA;
+    const [c, d] = f.teamB;
+    // Partner repetition is weighted 10× because it is the most noticeable
+    const partnerPenalty = (getP(a, b) + getP(c, d)) * 10;
+    const oppPenalty = getO(a, c) + getO(a, d) + getO(b, c) + getO(b, d);
+    return partnerPenalty + oppPenalty;
+  };
+
+  const updateCounts = (f: { teamA: [number, number]; teamB: [number, number] }) => {
+    const [a, b] = f.teamA;
+    const [c, d] = f.teamB;
+    matchCount[a]++; matchCount[b]++; matchCount[c]++; matchCount[d]++;
+    partnerCount[pk(a, b)] = (partnerCount[pk(a, b)] ?? 0) + 1;
+    partnerCount[pk(c, d)] = (partnerCount[pk(c, d)] ?? 0) + 1;
+    opponentCount[pk(a, c)] = (opponentCount[pk(a, c)] ?? 0) + 1;
+    opponentCount[pk(a, d)] = (opponentCount[pk(a, d)] ?? 0) + 1;
+    opponentCount[pk(b, c)] = (opponentCount[pk(b, c)] ?? 0) + 1;
+    opponentCount[pk(b, d)] = (opponentCount[pk(b, d)] ?? 0) + 1;
+  };
+
   const scheduled: ScheduledFixture[] = [];
+  const usedIndices = new Set<number>();
   let round = 1;
-  const remaining = [...allCombos];
 
-  // ── Phase 1: greedy unique scheduling ──────────────────────────────────────
-  while (remaining.length > 0) {
+  // ── Phase 1: maximally-varied scheduling ────────────────────────────────────
+  while (true) {
+    if (playerIds.every((p) => matchCount[p] >= target)) break;
+
     const inRound = new Set<number>();
+    let addedInRound = false;
 
-    // Prioritise fixtures involving players with the fewest matches
-    remaining.sort((a, b) => {
-      const sumA = [...a.teamA, ...a.teamB].reduce((s, p) => s + matchCount[p], 0);
-      const sumB = [...b.teamA, ...b.teamB].reduce((s, p) => s + matchCount[p], 0);
-      return sumA - sumB;
-    });
+    // Score and sort all unused combos: lowest repetition penalty first,
+    // then fewest total matches (to keep counts balanced across players).
+    const candidates = allCombos
+      .map((f, i) => ({ f, i, score: scoreFixture(f), matchSum: [...f.teamA, ...f.teamB].reduce((s, p) => s + matchCount[p], 0) }))
+      .filter(({ i }) => !usedIndices.has(i))
+      .sort((a, b) => a.score - b.score || a.matchSum - b.matchSum);
 
-    const toRemove: number[] = [];
-    for (let i = 0; i < remaining.length; i++) {
-      const f = remaining[i];
+    for (const { f, i } of candidates) {
       const involved = [...f.teamA, ...f.teamB];
       if (involved.some((p) => inRound.has(p))) continue;
-      // Skip if all 4 players are already at or above target
       if (involved.every((p) => matchCount[p] >= target)) continue;
 
       involved.forEach((p) => inRound.add(p));
       scheduled.push({ ...f, round, isBalancer: false, balancerEligiblePlayers: [] });
-      involved.forEach((p) => matchCount[p]++);
-      toRemove.push(i);
+      usedIndices.add(i);
+      updateCounts(f);
+      addedInRound = true;
     }
 
-    if (toRemove.length === 0) break;
-    for (let i = toRemove.length - 1; i >= 0; i--) remaining.splice(toRemove[i], 1);
+    if (!addedInRound) break;
     round++;
   }
 
@@ -1151,37 +1192,26 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
     const needMore = playerIds.filter((p) => matchCount[p] < maxCount);
     if (needMore.length === 0) break;
 
-    // Sort by fewest matches first
-    needMore.sort((a, b) => matchCount[a] - matchCount[b]);
+    // Prefer fixtures where ALL 4 players are under-count (avoids overshooting).
+    // Fall back to fixtures with at least one under-count player only if needed.
+    const allFour = allCombos
+      .map((f, i) => ({ f, i, score: scoreFixture(f) }))
+      .filter(({ f }) => [...f.teamA, ...f.teamB].every((p) => needMore.includes(p)))
+      .sort((a, b) => a.score - b.score);
 
-    // Prefer a combo where all 4 players are below max
-    let chosen = allCombos.find((combo) =>
-      [...combo.teamA, ...combo.teamB].every((p) => matchCount[p] < maxCount)
-    );
+    const someFour = allCombos
+      .map((f, i) => ({ f, i, score: scoreFixture(f) }))
+      .filter(({ f }) => [...f.teamA, ...f.teamB].some((p) => needMore.includes(p)))
+      .sort((a, b) => a.score - b.score);
 
-    // Fall back: combo involving the most-needed player + 3 others below max
-    if (!chosen) {
-      const p = needMore[0];
-      chosen = allCombos.find((combo) => {
-        const involved = [...combo.teamA, ...combo.teamB];
-        return involved.includes(p) && involved.filter((q) => matchCount[q] < maxCount).length >= 3;
-      });
-    }
-
-    // Last resort: any combo involving the most-needed player
-    if (!chosen) {
-      const p = needMore[0];
-      chosen = allCombos.find((combo) => [...combo.teamA, ...combo.teamB].includes(p));
-    }
-
+    const chosen = (allFour.length > 0 ? allFour : someFour)[0];
     if (!chosen) break;
 
-    // Record which players are below max BEFORE incrementing their counts
-    const involved = [...chosen.teamA, ...chosen.teamB];
+    const involved = [...chosen.f.teamA, ...chosen.f.teamB];
     const eligiblePlayers = involved.filter((p) => matchCount[p] < maxCount);
 
-    scheduled.push({ ...chosen, round, isBalancer: true, balancerEligiblePlayers: eligiblePlayers });
-    involved.forEach((p) => matchCount[p]++);
+    scheduled.push({ ...chosen.f, round, isBalancer: true, balancerEligiblePlayers: eligiblePlayers });
+    updateCounts(chosen.f);
     round++;
   }
 

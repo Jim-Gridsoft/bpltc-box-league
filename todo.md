@@ -266,3 +266,12 @@
 - [x] Fixed additional schema drift: seasons table missing entryFeeGBP, maxEntrants, description columns — applied via direct ALTER TABLE
 - [x] Health check now reports: [SchemaHealthCheck] ✓ All expected schema columns are present
 - [x] Server starts cleanly, 0 TypeScript errors, 61/61 tests passing
+
+## Round 30 — Maximally Varied Pairing Algorithm
+
+- [x] Analyse current algorithm: identified Phase 2 balancer spiral bug (picks fixtures with over-count players, causing cascading extra matches)
+- [x] Design new algorithm: Social Tennis/American Tournament cost-based approach with partner/opponent penalty scoring
+- [x] Implement new algorithm in tournament.db.ts (Phase 1: greedy cost-minimisation; Phase 2: all-under-count preference)
+- [x] Fix Phase 2 spiral bug: prefer fixtures where ALL 4 players are under-count; fall back to any fixture only if needed
+- [x] Verify: n=4 max=1, n=5 max=1, n=6 max=2, n=7 max=2, n=8 max=1 partner repeats
+- [x] Update tests: 7 new pairing variation tests added; 68/68 tests passing, 0 TypeScript errors
