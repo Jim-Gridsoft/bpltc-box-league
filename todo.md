@@ -290,3 +290,11 @@
 - [x] Remove /partners route and PartnerFinder import from App.tsx
 - [x] Update Step 3 in the Home page "How It Works" section to reflect system-generated pairings
 - [x] 81/81 tests passing, 0 TypeScript errors
+
+## Round 33 — Fix Partner Rotation Copy on Home Page
+
+- [x] Audited all 3 references to partner uniqueness on the Home page
+- [x] Step 3 body: "maximising partner rotation" / "varied as much as possible"
+- [x] Rules section rule 5: "maximises partner variation so you play with as many different partners as possible"
+- [x] Hero subtitle: "Maximally varied partners" (was "Rotating partners")
+- [x] 81/81 tests passing, 0 TypeScript errors

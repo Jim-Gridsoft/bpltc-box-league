@@ -54,7 +54,7 @@ const HOW_IT_WORKS = [
   {
     icon: RefreshCw,
     title: "Play Your System-Generated Fixtures",
-    body: "The system automatically generates your fixture schedule, rotating partners across every match. You will never partner the same player twice in a season — keeping things fresh, fair, and social.",
+    body: "The system automatically generates your fixture schedule, maximising partner rotation across every match. Partners are varied as much as possible each season — keeping things fresh, fair, and social.",
   },
   {
     icon: BarChart3,
@@ -82,7 +82,7 @@ const RULES = [
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
   "Players are seeded into ability-matched boxes of 6–8 players by the committee at the start of each season.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
-  "Partners rotate each match — you may not partner the same player more than once per season.",
+  "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
   "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
   "Box standings are determined by points, then by matches won, then by sets won.",
   "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
@@ -165,7 +165,7 @@ export default function Home() {
               className="text-lg md:text-xl leading-relaxed mb-8"
               style={{ color: "rgba(250,246,238,0.85)", fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300 }}
             >
-              Ability-matched boxes. Rotating partners. Promotion and relegation.
+              Ability-matched boxes. Maximally varied partners. Promotion and relegation.
               Compete for the title — and earn points for every match you play. Entry is just £20 per season.
             </p>
             <div className="flex flex-wrap gap-3">
