@@ -1615,3 +1615,73 @@ export async function getFixtureBalanceSummary(seasonId: number): Promise<
     }))
     .sort((a, b) => a.playerName.localeCompare(b.playerName));
 }
+
+// ── Fixture Schedule Summary (for notifications) ─────────────────────────────
+
+/**
+ * Build a per-player fixture schedule summary for a season.
+ * Returns an array of { playerName, boxName, fixtures[] } objects
+ * suitable for sending as a notification or email.
+ */
+export async function buildFixtureScheduleSummary(seasonId: number): Promise<
+  {
+    playerId: number;
+    playerName: string;
+    boxName: string;
+    fixtures: {
+      round: number;
+      partner: string;
+      opponents: string;
+      isBalancer: boolean;
+    }[];
+  }[]
+> {
+  const allBoxes = await getAllFixturesBySeason(seasonId);
+  const playerMap: Record<
+    number,
+    {
+      playerId: number;
+      playerName: string;
+      boxName: string;
+      fixtures: { round: number; partner: string; opponents: string; isBalancer: boolean }[];
+    }
+  > = {};
+
+  for (const box of allBoxes) {
+    for (const f of box.fixtures) {
+      const teams: [number, number, string, string, string, string][] = [
+        // [playerId, partnerId, partnerName, opp1, opp2, isBalancer]
+        [f.teamAPlayer1, f.teamAPlayer2, f.teamAPlayer2Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
+        [f.teamAPlayer2, f.teamAPlayer1, f.teamAPlayer1Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
+        [f.teamBPlayer1, f.teamBPlayer2, f.teamBPlayer2Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
+        [f.teamBPlayer2, f.teamBPlayer1, f.teamBPlayer1Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
+      ];
+
+      for (const [pid, , partnerName, opp1, opp2, isBalStr] of teams) {
+        if (!playerMap[pid]) {
+          // Determine player name from the fixture
+          const names: Record<number, string> = {
+            [f.teamAPlayer1]: f.teamAPlayer1Name,
+            [f.teamAPlayer2]: f.teamAPlayer2Name,
+            [f.teamBPlayer1]: f.teamBPlayer1Name,
+            [f.teamBPlayer2]: f.teamBPlayer2Name,
+          };
+          playerMap[pid] = {
+            playerId: pid,
+            playerName: names[pid] ?? "Unknown",
+            boxName: box.boxName,
+            fixtures: [],
+          };
+        }
+        playerMap[pid].fixtures.push({
+          round: f.round,
+          partner: partnerName,
+          opponents: `${opp1} & ${opp2}`,
+          isBalancer: isBalStr === "true",
+        });
+      }
+    }
+  }
+
+  return Object.values(playerMap).sort((a, b) => a.playerName.localeCompare(b.playerName));
+}

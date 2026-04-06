@@ -84,6 +84,7 @@ export default function Admin() {
   });
 
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState<number | null>(null);
+  const [confirmRegenFixtures, setConfirmRegenFixtures] = useState(false);
   const [confirmEndSeasonId, setConfirmEndSeasonId] = useState<number | null>(null);
   const [endSeasonResult, setEndSeasonResult] = useState<{ seasonId: number; summary: { boxId: number; boxName: string; level: number; outcomes: { entrantId: number; userId: number; displayName: string; rank: number; points: number; outcome: "promoted" | "stayed" | "relegated"; newAbilityRating: number }[] }[] } | null>(null);
   const endSeasonMutation = trpc.tournament.adminEndSeason.useMutation({
@@ -350,15 +351,48 @@ export default function Admin() {
                 <h2 className="font-serif text-xl font-bold text-[#1b4332]">Generate Round-Robin Fixtures</h2>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                Generates a full round-robin fixture schedule for all boxes using the circle method. Each round produces doubles matches with rotating partners so no two players partner each other more than once per season.
+                Generates a full balanced fixture schedule for all boxes. Each player gets an equal number of matches. Where box sizes require it, a balancer match is added — points are only awarded to the players who needed the extra fixture.
               </p>
-              <button
-                onClick={() => activeSeason && generateFixturesMutation.mutate({ seasonId: activeSeason.id })}
-                disabled={!activeSeason || !boxes || boxes.length === 0 || generateFixturesMutation.isPending}
-                className="bg-[#c9a84c] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b8963e] transition-colors disabled:opacity-50 flex items-center gap-2">
-                {generateFixturesMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Generate Fixtures
-              </button>
+              {/* Confirmation guard — shown when fixtures already exist */}
+              {confirmRegenFixtures ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-semibold text-amber-800 mb-1">⚠️ Fixtures already exist for this season</p>
+                  <p className="text-xs text-amber-700 mb-3">
+                    Regenerating will delete all existing fixtures and any recorded results for this season. This action cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (activeSeason) generateFixturesMutation.mutate({ seasonId: activeSeason.id });
+                        setConfirmRegenFixtures(false);
+                      }}
+                      className="bg-red-600 text-white px-4 py-1.5 rounded-lg font-semibold text-xs hover:bg-red-700 transition-colors">
+                      Yes, regenerate
+                    </button>
+                    <button
+                      onClick={() => setConfirmRegenFixtures(false)}
+                      className="bg-gray-200 text-gray-700 px-4 py-1.5 rounded-lg font-semibold text-xs hover:bg-gray-300 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (!activeSeason) return;
+                    // If fixtures already exist, show confirmation guard
+                    if (balanceSummary && balanceSummary.length > 0) {
+                      setConfirmRegenFixtures(true);
+                    } else {
+                      generateFixturesMutation.mutate({ seasonId: activeSeason.id });
+                    }
+                  }}
+                  disabled={!activeSeason || !boxes || boxes.length === 0 || generateFixturesMutation.isPending}
+                  className="bg-[#c9a84c] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b8963e] transition-colors disabled:opacity-50 flex items-center gap-2">
+                  {generateFixturesMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Generate Fixtures
+                </button>
+              )}
               {!boxes || boxes.length === 0 ? (
                 <p className="text-xs text-amber-600 mt-3">Create boxes first before generating fixtures.</p>
               ) : generateFixturesMutation.data ? (

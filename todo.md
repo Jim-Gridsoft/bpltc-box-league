@@ -250,3 +250,11 @@
 - [x] Admin UI (Sandbox tab): "Reset & Regenerate Fixtures" button — combined reset + regenerate in one click
 - [x] Admin UI (Seasons tab): "Fixture Balance Summary" table — shows each player's total/regular/balancer match counts after fixture generation
 - [x] Tests: cover sandboxResetAndRegenerate and fixtureBalanceSummary procedures (61/61 passing)
+
+## Round 28 — Next Steps Implementation
+
+- [x] Home page: remove "4 seasons a year" stat tile and all related copy; Season Calendar now shows only Spring 2026; stats bar updated to 4 tiles; rules, awards, and feature text updated
+- [x] Admin UI: regenerate fixtures confirmation guard — amber warning shown if fixtures already exist, requiring explicit confirmation before regenerating
+- [x] Backend: buildFixtureScheduleSummary helper — builds per-player schedule with partner/opponent/round/balancer info
+- [x] Backend: adminGenerateFixtures now sends owner notification with full per-player schedule summary (capped at 4000 chars) after generation
+- [x] 61/61 tests passing, 0 TypeScript errors

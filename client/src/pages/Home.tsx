@@ -69,19 +69,16 @@ const HOW_IT_WORKS = [
   {
     icon: Trophy,
     title: "Compete for Year-Long Honours",
-    body: "Points accumulate across all four seasons into a year-long table. Five awards are presented at the end-of-year celebration — including Best Improver and Spirit of the Club.",
+    body: "Points accumulate across all seasons played into a year-long table. Five awards are presented at the end-of-year celebration — including Best Improver and Spirit of the Club.",
   },
 ];
 
 const SEASONS = [
-  { name: "Spring", dates: "1 Apr – 30 Jun 2026" },
-  { name: "Summer", dates: "1 Jul – 30 Sep 2026" },
-  { name: "Autumn", dates: "1 Oct – 31 Dec 2026" },
-  { name: "Winter", dates: "1 Jan – 31 Mar 2027" },
+  { name: "Spring 2026", dates: "1 Apr – 30 Jun 2026" },
 ];
 
 const RULES = [
-  "Entry fee is £20 per player per season. A full-year entry (all four seasons) is available at a discounted rate of £60.",
+  "Entry fee is £20 per player per season.",
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
   "Players are seeded into ability-matched boxes of 6–8 players by the committee at the start of each season.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
@@ -89,7 +86,7 @@ const RULES = [
   "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
   "Box standings are determined by points, then by matches won, then by sets won.",
   "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
-  "Year-long points accumulate across all four seasons and determine the overall annual champion.",
+  "Year-long points accumulate across all seasons played in a year and determine the overall annual champion.",
   "Results are self-reported via the website and are subject to committee verification.",
   "The committee reserves the right to amend or remove any result that appears inaccurate.",
   "Entry fees are non-refundable once a season has commenced.",
@@ -99,7 +96,7 @@ const AWARDS = [
   {
     icon: Trophy,
     title: "Annual Champion",
-    desc: "The player with the most accumulated points across all four seasons.",
+    desc: "The player with the most accumulated points across all seasons played in the year.",
   },
   {
     icon: Star,
@@ -168,7 +165,7 @@ export default function Home() {
               className="text-lg md:text-xl leading-relaxed mb-8"
               style={{ color: "rgba(250,246,238,0.85)", fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300 }}
             >
-              Four 3-month seasons. Ability-matched boxes. Rotating partners. Promotion and relegation.
+              Ability-matched boxes. Rotating partners. Promotion and relegation.
               Compete for the title — and earn points for every match you play. Entry is just £20 per season.
             </p>
             <div className="flex flex-wrap gap-3">
@@ -212,9 +209,8 @@ export default function Home() {
         className="py-6 border-y"
         style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.1)" }}
       >
-        <div className="container grid grid-cols-2 md:grid-cols-5 gap-6 text-center">
+        <div className="container grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {[
-            { value: "4", label: "Seasons Per Year" },
             { value: "£20", label: "Entry Per Season" },
             { value: "2 pts", label: "For a Win" },
             { value: "1 pt", label: "For Winning a Set" },
@@ -305,14 +301,14 @@ export default function Home() {
                 className="text-4xl font-semibold mt-2"
                 style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
               >
-                Four Seasons, One Year
+                Season Calendar
               </h2>
               <p className="text-base mt-3" style={{ color: "var(--charcoal-mid)" }}>
-                Each season lasts 3 months. You can enter one season, all four, or any combination —
-                making it easy to dip in and out around holidays and other commitments.
+                Each season runs for approximately 3 months. Seasons are scheduled around the club calendar
+                — you can enter whenever a season is open, making it easy to fit around other commitments.
               </p>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm mx-auto sm:max-w-none">
               {SEASONS.map(({ name, dates }) => (
                 <div
                   key={name}

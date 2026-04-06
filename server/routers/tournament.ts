@@ -39,6 +39,7 @@ import {
   sandboxResetSeason,
   autoCreateBoxes,
   generateFixtures,
+  buildFixtureScheduleSummary,
   getFixturesByBox,
   getMyFixtures,
   deleteSeason,
@@ -555,10 +556,31 @@ export const tournamentRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       const result = await generateFixtures(input.seasonId);
-      await notifyOwner({
-        title: `Fixtures generated for season ${input.seasonId}`,
-        content: `${result.totalFixtures} fixtures generated across ${result.boxCount} boxes.`,
-      });
+
+      // Build per-player schedule summary and send as owner notification
+      try {
+        const schedules = await buildFixtureScheduleSummary(input.seasonId);
+        const lines: string[] = [
+          `${result.totalFixtures} fixtures generated across ${result.boxCount} boxes.`,
+          "",
+          "Player Schedule Summary:",
+        ];
+        for (const p of schedules) {
+          lines.push(`\n${p.playerName} (${p.boxName}) — ${p.fixtures.length} match${p.fixtures.length !== 1 ? "es" : ""}:`);
+          for (const f of p.fixtures.sort((a, b) => a.round - b.round)) {
+            const balancerNote = f.isBalancer ? " [BALANCER — no points]" : "";
+            lines.push(`  Round ${f.round}: partner ${f.partner} vs ${f.opponents}${balancerNote}`);
+          }
+        }
+        await notifyOwner({
+          title: `Fixtures generated — Season ${input.seasonId} (${schedules.length} players)`,
+          content: lines.join("\n").slice(0, 4000), // cap at 4000 chars
+        });
+      } catch (e) {
+        // Non-fatal — fixture generation already succeeded
+        console.warn("[adminGenerateFixtures] Failed to send schedule notification:", e);
+      }
+
       return result;
     }),
 
