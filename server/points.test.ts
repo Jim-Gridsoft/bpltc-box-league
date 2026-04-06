@@ -331,3 +331,89 @@ describe("buildBalancedSchedule — pairing variation", () => {
     expect(buildBalancedScheduleTest([1, 2, 3, 4, 5]).length).toBe(5);
   });
 });
+
+// ── computeBoxSizes — minimum-4 box distribution ──────────────────────────────
+import { computeBoxSizes } from "./tournament.db";
+
+describe("computeBoxSizes — minimum 4 members per box", () => {
+  // Helper: verify all boxes have ≥ 4 members and sizes differ by at most 1
+  function assertValid(sizes: number[], n: number) {
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(n);
+    expect(Math.min(...sizes)).toBeGreaterThanOrEqual(4);
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+  }
+
+  it("returns empty array for fewer than 4 players", () => {
+    expect(computeBoxSizes(0)).toEqual([]);
+    expect(computeBoxSizes(1)).toEqual([]);
+    expect(computeBoxSizes(2)).toEqual([]);
+    expect(computeBoxSizes(3)).toEqual([]);
+  });
+
+  it("n=4: 1 box of 4", () => {
+    expect(computeBoxSizes(4)).toEqual([4]);
+  });
+
+  it("n=5: 1 box of 5", () => {
+    expect(computeBoxSizes(5)).toEqual([5]);
+  });
+
+  it("n=6: 1 box of 6 (default targetBoxSize=6)", () => {
+    expect(computeBoxSizes(6)).toEqual([6]);
+  });
+
+  it("n=7: 1 box of 7 (cannot split into two ≥4 boxes)", () => {
+    expect(computeBoxSizes(7)).toEqual([7]);
+  });
+
+  it("n=8: 2 boxes of 4 each", () => {
+    expect(computeBoxSizes(8)).toEqual([4, 4]);
+  });
+
+  it("n=9: 2 boxes [5, 4]", () => {
+    const sizes = computeBoxSizes(9);
+    assertValid(sizes, 9);
+    expect(sizes.length).toBe(2);
+  });
+
+  it("n=11: 2 boxes [6, 5] — last box has 5, not 3", () => {
+    // Without the fix: ceil(11/6)=2, box1=6, box2=5 — already fine
+    // But with old algorithm: ceil(11/6)=2, box1=6, box2=5 ✓
+    const sizes = computeBoxSizes(11);
+    assertValid(sizes, 11);
+    expect(sizes.length).toBe(2);
+  });
+
+  it("n=13: 3 boxes — no box has fewer than 4 (old algorithm gave [6,6,1])", () => {
+    // Old algorithm: ceil(13/6)=3, box1=6, box2=6, box3=1 ← FAIL
+    // New algorithm: floor(13/4)=3 boxes, sizes=[5,4,4] ✓
+    const sizes = computeBoxSizes(13);
+    assertValid(sizes, 13);
+    expect(sizes.length).toBe(3);
+  });
+
+  it("n=14: 3 boxes — no box has fewer than 4 (old algorithm gave [6,6,2])", () => {
+    const sizes = computeBoxSizes(14);
+    assertValid(sizes, 14);
+    expect(sizes.length).toBe(3);
+  });
+
+  it("n=19: 4 boxes — no box has fewer than 4 (old algorithm gave [6,6,6,1])", () => {
+    const sizes = computeBoxSizes(19);
+    assertValid(sizes, 19);
+    expect(sizes.length).toBe(4);
+  });
+
+  it("n=25: 5 boxes of 5 each", () => {
+    const sizes = computeBoxSizes(25);
+    assertValid(sizes, 25);
+    expect(sizes.length).toBe(5);
+  });
+
+  it("all sizes from 4 to 30 satisfy minimum-4 and balance constraints", () => {
+    for (let n = 4; n <= 30; n++) {
+      const sizes = computeBoxSizes(n);
+      assertValid(sizes, n);
+    }
+  });
+});

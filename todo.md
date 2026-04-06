@@ -275,3 +275,11 @@
 - [x] Fix Phase 2 spiral bug: prefer fixtures where ALL 4 players are under-count; fall back to any fixture only if needed
 - [x] Verify: n=4 max=1, n=5 max=1, n=6 max=2, n=7 max=2, n=8 max=1 partner repeats
 - [x] Update tests: 7 new pairing variation tests added; 68/68 tests passing, 0 TypeScript errors
+
+## Round 31 — Minimum Box Size of 4
+
+- [x] Backend: extracted computeBoxSizes(n, targetBoxSize) pure helper — enforces minimum 4 members per box
+- [x] Backend: autoCreateBoxes now uses computeBoxSizes; overflow players redistributed into adjacent boxes (ability rating order preserved)
+- [x] Backend: redistribution strategy: numBoxes = min(ceil(n/target), floor(n/4)); distribute evenly (sizes differ by ≤1)
+- [x] Tests: 14 new computeBoxSizes tests covering n=4–30, edge cases (n=13 old=[6,6,1] now=[5,4,4], n=19 old=[6,6,6,1] now=[5,5,5,4])
+- [x] 81/81 tests passing, 0 TypeScript errors

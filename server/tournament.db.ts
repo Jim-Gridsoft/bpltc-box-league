@@ -920,9 +920,35 @@ export async function sandboxResetSeason(seasonId: number) {
 // ── Auto Box Creation & Fixture Generation ────────────────────────────────────
 
 /**
+ * Pure helper: compute the size of each box given n players and a target box size.
+ *
+ * Rules:
+ *   - Every box must have at least 4 members (minimum to play doubles).
+ *   - Boxes are as balanced as possible (sizes differ by at most 1).
+ *   - Ability-rating order is preserved: box 1 gets the strongest players.
+ *
+ * Algorithm:
+ *   numBoxes = min(ceil(n / targetBoxSize), floor(n / 4))
+ *   Players are then distributed evenly: the first (n % numBoxes) boxes get
+ *   one extra player each.
+ *
+ * @returns Array of box sizes in order (box 1 first, strongest players first).
+ */
+export function computeBoxSizes(n: number, targetBoxSize: number = 6): number[] {
+  if (n < 4) return []; // Not enough players for even one box
+  const naturalBoxes = Math.ceil(n / targetBoxSize);
+  const maxBoxesForMin4 = Math.max(1, Math.floor(n / 4));
+  const numBoxes = Math.min(naturalBoxes, maxBoxesForMin4);
+  const base = Math.floor(n / numBoxes);
+  const remainder = n % numBoxes;
+  return Array.from({ length: numBoxes }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
+/**
  * Auto-create ability-seeded boxes for a season and assign all paid entrants.
  * Entrants are sorted by abilityRating (desc) and distributed into boxes of
- * targetBoxSize (default 6). Returns the created boxes with their members.
+ * targetBoxSize (default 6). Every box is guaranteed to have at least 4 members.
+ * Returns the created boxes with their members.
  */
 export async function autoCreateBoxes(
   seasonId: number,
@@ -955,11 +981,14 @@ export async function autoCreateBoxes(
   }
   await db.delete(boxes).where(eq(boxes.seasonId, seasonId));
 
-  // Divide entrants into groups of targetBoxSize
+  // Compute box sizes using the minimum-4 rule (see computeBoxSizes above).
+  const boxSizes = computeBoxSizes(entrants.length, targetBoxSize);
+  const numBoxes = boxSizes.length;
+
   const boxNames = ["Box A", "Box B", "Box C", "Box D", "Box E", "Box F", "Box G", "Box H"];
-  const numBoxes = Math.ceil(entrants.length / targetBoxSize);
   const result: { boxId: number; name: string; level: number; members: { entrantId: number; displayName: string; abilityRating: number }[] }[] = [];
 
+  let entrantOffset = 0;
   for (let i = 0; i < numBoxes; i++) {
     const name = boxNames[i] ?? `Box ${i + 1}`;
     const level = i + 1;
@@ -975,8 +1004,10 @@ export async function autoCreateBoxes(
     const box = boxRows[0];
     if (!box) continue;
 
-    // Assign entrants to this box
-    const slice = entrants.slice(i * targetBoxSize, (i + 1) * targetBoxSize);
+    // Assign entrants to this box (ability-rating order is preserved because
+    // entrants were sorted descending by abilityRating above)
+    const slice = entrants.slice(entrantOffset, entrantOffset + boxSizes[i]);
+    entrantOffset += boxSizes[i];
     const members: { entrantId: number; displayName: string; abilityRating: number }[] = [];
 
     for (const entrant of slice) {
