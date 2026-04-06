@@ -53,8 +53,8 @@ const HOW_IT_WORKS = [
   },
   {
     icon: RefreshCw,
-    title: "Arrange Matches with Rotating Partners",
-    body: "Use the Partner Finder to arrange each match. Partners rotate — you cannot play with the same partner twice in a season, keeping things fresh and social.",
+    title: "Play Your System-Generated Fixtures",
+    body: "The system automatically generates your fixture schedule, rotating partners across every match. You will never partner the same player twice in a season — keeping things fresh, fair, and social.",
   },
   {
     icon: BarChart3,

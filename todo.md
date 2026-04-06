@@ -283,3 +283,10 @@
 - [x] Backend: redistribution strategy: numBoxes = min(ceil(n/target), floor(n/4)); distribute evenly (sizes differ by ≤1)
 - [x] Tests: 14 new computeBoxSizes tests covering n=4–30, edge cases (n=13 old=[6,6,1] now=[5,4,4], n=19 old=[6,6,6,1] now=[5,5,5,4])
 - [x] 81/81 tests passing, 0 TypeScript errors
+
+## Round 32 — Remove Partner Finder & Fix Step 3 Copy
+
+- [x] Remove Partner Finder nav link from TournamentNav
+- [x] Remove /partners route and PartnerFinder import from App.tsx
+- [x] Update Step 3 in the Home page "How It Works" section to reflect system-generated pairings
+- [x] 81/81 tests passing, 0 TypeScript errors

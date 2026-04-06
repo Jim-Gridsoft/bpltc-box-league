@@ -8,7 +8,6 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
 import Admin from "./pages/Admin";
-import PartnerFinder from "./pages/PartnerFinder";
 import Results from "./pages/Results";
 import ContactAdmin from "./pages/ContactAdmin";
 
@@ -20,7 +19,6 @@ function Router() {
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/leaderboard" component={Leaderboard} />
       <Route path="/admin" component={Admin} />
-      <Route path="/partners" component={PartnerFinder} />
       <Route path="/results" component={Results} />
       <Route path="/contact-admin" component={ContactAdmin} />
       <Route path="/404" component={NotFound} />
