@@ -258,3 +258,11 @@
 - [x] Backend: buildFixtureScheduleSummary helper — builds per-player schedule with partner/opponent/round/balancer info
 - [x] Backend: adminGenerateFixtures now sends owner notification with full per-player schedule summary (capped at 4000 chars) after generation
 - [x] 61/61 tests passing, 0 TypeScript errors
+
+## Round 29 — Fix Sign-In Service Unavailable
+
+- [x] Diagnose: schemaHealthCheck was calling raw mysql2 client.execute() with callback API, crashing the server process on every startup
+- [x] Fix: rewrote schemaHealthCheck to use Drizzle sql helper; fixed row extraction for mysql2 tuple format
+- [x] Fixed additional schema drift: seasons table missing entryFeeGBP, maxEntrants, description columns — applied via direct ALTER TABLE
+- [x] Health check now reports: [SchemaHealthCheck] ✓ All expected schema columns are present
+- [x] Server starts cleanly, 0 TypeScript errors, 61/61 tests passing

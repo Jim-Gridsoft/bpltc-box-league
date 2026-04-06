@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 
 /**
@@ -79,20 +80,31 @@ export async function runSchemaHealthCheck(): Promise<void> {
       return;
     }
 
-    // Use the underlying mysql2 client for raw SQL
-    const client = (db as any).$client;
-    if (!client) {
-      console.warn("[SchemaHealthCheck] Cannot access DB client — skipping check.");
-      return;
-    }
-
-    const [rows]: [{ TABLE_NAME: string; COLUMN_NAME: string }[], unknown] = await client.execute(
-      "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY TABLE_NAME, ordinal_position"
+    // Use Drizzle's sql helper — works with any underlying driver
+    const rows = await db.execute(
+      sql`SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY TABLE_NAME, ordinal_position`
     );
+
+    // drizzle-orm/mysql2 with a connection string returns a [rows, fields] tuple.
+    // The actual row data is at index 0.
+    const raw: unknown = rows;
+    let rowArray: { TABLE_NAME: string; COLUMN_NAME: string }[] = [];
+    if (Array.isArray(raw)) {
+      // Tuple format: [[{TABLE_NAME, COLUMN_NAME}, ...], fields]
+      const first = (raw as any[])[0];
+      if (Array.isArray(first)) {
+        rowArray = first as { TABLE_NAME: string; COLUMN_NAME: string }[];
+      } else {
+        // Flat array of rows
+        rowArray = raw as { TABLE_NAME: string; COLUMN_NAME: string }[];
+      }
+    } else if (raw && typeof raw === "object" && Array.isArray((raw as any).rows)) {
+      rowArray = (raw as any).rows;
+    }
 
     // Build a map: tableName → Set<columnName>
     const actualColumns: Record<string, Set<string>> = {};
-    for (const row of rows) {
+    for (const row of rowArray) {
       const tbl = row.TABLE_NAME;
       if (!actualColumns[tbl]) actualColumns[tbl] = new Set();
       actualColumns[tbl].add(row.COLUMN_NAME);
