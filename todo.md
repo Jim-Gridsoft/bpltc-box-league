@@ -327,3 +327,10 @@
 - [x] Frontend: wrapped the Demo/Free registration block in `user?.role === "admin"` guard — invisible to regular players
 - [x] Backend: added `if (ctx.user.role !== "admin") throw FORBIDDEN` guard to sandboxRegister procedure
 - [x] 88/88 tests passing, 0 TypeScript errors
+
+## Round 37 — Fix Site Title
+
+- [x] Updated HTML <title> to "BPLTC Box League" in client/index.html
+- [x] Updated meta description to accurately describe the box league
+- [x] No other hardcoded title references found in server or shared code
+- [x] 88/88 tests passing, 0 TypeScript errors
