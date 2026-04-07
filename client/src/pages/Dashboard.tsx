@@ -16,6 +16,9 @@ import {
   Loader2,
   ClipboardEdit,
   X,
+  Phone,
+  Mail,
+  UserCheck,
 } from "lucide-react";
 import SetScoreEntry, { ScoreResult } from "@/components/SetScoreEntry";
 
@@ -279,6 +282,12 @@ export default function Dashboard() {
   const [seasonId, setSeasonId] = useState<number | null>(null);
   const [regName, setRegName] = useState("");
   const [regAbility, setRegAbility] = useState(3);
+  const [regPhone, setRegPhone] = useState("");
+  const [regShareContact, setRegShareContact] = useState(false);
+  // Contact preferences editing state
+  const [editPhone, setEditPhone] = useState("");
+  const [editShareContact, setEditShareContact] = useState(false);
+  const [editingContact, setEditingContact] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: seasons } = trpc.tournament.seasons.useQuery();
@@ -304,6 +313,19 @@ export default function Dashboard() {
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!myEntry?.paid }
   );
+  const { data: boxContacts } = trpc.tournament.getBoxContacts.useQuery(
+    { boxId: myBox?.id ?? 0, seasonId: activeSeason?.id ?? 0 },
+    { enabled: !!myBox?.id && !!activeSeason?.id }
+  );
+
+  const updateContactMutation = trpc.tournament.updateContactPreferences.useMutation({
+    onSuccess: () => {
+      toast.success("Contact preferences updated.");
+      setEditingContact(false);
+      utils.tournament.myEntry.invalidate();
+    },
+    onError: (e) => toast.error(e.message),
+  });
 
   const registerMutation = trpc.tournament.register.useMutation({
     onSuccess: () => {
@@ -434,6 +456,36 @@ export default function Dashboard() {
                   competition more when playing at the right level.
                 </p>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  value={regPhone}
+                  onChange={(e) => setRegPhone(e.target.value)}
+                  placeholder="e.g. 07700 900123"
+                  type="tel"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                />
+              </div>
+              <div className="flex items-start gap-3 p-3 bg-[#f5f0e8] rounded-lg border border-[#e8dfc8]">
+                <input
+                  id="shareContact"
+                  type="checkbox"
+                  checked={regShareContact}
+                  onChange={(e) => setRegShareContact(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#1b4332] focus:ring-[#1b4332] cursor-pointer"
+                />
+                <label htmlFor="shareContact" className="text-sm text-gray-700 cursor-pointer">
+                  <span className="font-medium">Share my contact details with box-mates</span>
+                  <br />
+                  <span className="text-xs text-gray-500">
+                    If ticked, your name, email address{regPhone ? " and phone number" : ""} will be
+                    visible to other players in your box so you can arrange matches. You can change
+                    this at any time from your dashboard.
+                  </span>
+                </label>
+              </div>
               <button
                 onClick={() =>
                   activeSeason &&
@@ -441,6 +493,8 @@ export default function Dashboard() {
                     seasonId: activeSeason.id,
                     displayName: regName,
                     abilityRating: regAbility,
+                    phoneNumber: regPhone.trim() || undefined,
+                    shareContact: regShareContact,
                   })
                 }
                 disabled={!regName.trim() || registerMutation.isPending}
@@ -592,6 +646,111 @@ export default function Dashboard() {
                   <p className="text-gray-400 text-sm">
                     Box assignments will be published when the season opens.
                   </p>
+                )}
+              </div>
+            )}
+
+            {/* ── Box Contacts ── */}
+            {myBox && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <Phone className="w-5 h-5 text-[#1b4332]" />
+                    <h2 className="font-serif text-xl font-bold text-[#1b4332]">
+                      Box Contact Details
+                    </h2>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditPhone((myEntry as any)?.phoneNumber ?? "");
+                      setEditShareContact((myEntry as any)?.shareContact ?? false);
+                      setEditingContact(true);
+                    }}
+                    className="text-xs text-[#1b4332] underline hover:no-underline"
+                  >
+                    Edit my preferences
+                  </button>
+                </div>
+
+                {/* Contact preferences edit panel */}
+                {editingContact && myEntry && (
+                  <div className="mb-4 p-4 bg-[#f5f0e8] rounded-lg border border-[#e8dfc8] space-y-3">
+                    <p className="text-sm font-medium text-[#1b4332]">My Contact Preferences</p>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Phone Number (optional)</label>
+                      <input
+                        value={editPhone}
+                        onChange={(e) => setEditPhone(e.target.value)}
+                        placeholder="e.g. 07700 900123"
+                        type="tel"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                      />
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <input
+                        id="editShareContact"
+                        type="checkbox"
+                        checked={editShareContact}
+                        onChange={(e) => setEditShareContact(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#1b4332] focus:ring-[#1b4332] cursor-pointer"
+                      />
+                      <label htmlFor="editShareContact" className="text-sm text-gray-700 cursor-pointer">
+                        Share my contact details with box-mates
+                      </label>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() =>
+                          updateContactMutation.mutate({
+                            seasonEntrantId: myEntry.id,
+                            phoneNumber: editPhone.trim() || null,
+                            shareContact: editShareContact,
+                          })
+                        }
+                        disabled={updateContactMutation.isPending}
+                        className="bg-[#1b4332] text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-[#2d6a4f] transition-colors disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingContact(false)}
+                        className="text-gray-500 px-4 py-1.5 rounded-lg text-sm hover:bg-gray-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Box-mates who have shared contact details */}
+                {boxContacts && boxContacts.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 mb-3">
+                      The following box-mates have chosen to share their contact details so you can arrange matches.
+                    </p>
+                    {boxContacts.map((contact, i) => (
+                      <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 px-4 py-3 bg-gray-50 rounded-lg">
+                        <span className="font-medium text-gray-800 min-w-[140px]">{contact.displayName}</span>
+                        {contact.email && (
+                          <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
+                            <Mail className="w-3.5 h-3.5" />
+                            {contact.email}
+                          </a>
+                        )}
+                        {contact.phoneNumber && (
+                          <a href={`tel:${contact.phoneNumber}`} className="flex items-center gap-1.5 text-sm text-green-700 hover:underline">
+                            <Phone className="w-3.5 h-3.5" />
+                            {contact.phoneNumber}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-gray-400 text-sm">
+                    <UserCheck className="w-4 h-4" />
+                    <span>No box-mates have shared their contact details yet.</span>
+                  </div>
                 )}
               </div>
             )}

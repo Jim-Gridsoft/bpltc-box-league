@@ -2031,3 +2031,68 @@ export async function getRemovePlayerPreview(
     hasPlayedMatches: matchesPlayed > 0,
   };
 }
+
+// ── Contact Sharing ───────────────────────────────────────────────────────────
+
+/**
+ * Returns the contact details of all box-mates who have consented to sharing.
+ * Only returns players in the same box as the requesting user.
+ * The requesting user's own entry is excluded.
+ */
+export async function getBoxContacts(
+  boxId: number,
+  requestingUserId: number
+): Promise<{ displayName: string; email: string | null; phoneNumber: string | null }[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get all box members with their entrant and user info
+  const rows = await db
+    .select({
+      displayName: seasonEntrants.displayName,
+      email: users.email,
+      phoneNumber: seasonEntrants.phoneNumber,
+      shareContact: seasonEntrants.shareContact,
+      userId: seasonEntrants.userId,
+    })
+    .from(boxMembers)
+    .innerJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
+    .innerJoin(users, eq(seasonEntrants.userId, users.id))
+    .where(eq(boxMembers.boxId, boxId));
+
+  // Only return consented members, excluding the requesting user
+  return rows
+    .filter((r) => r.shareContact && r.userId !== requestingUserId)
+    .map((r) => ({
+      displayName: r.displayName,
+      email: r.email ?? null,
+      phoneNumber: r.phoneNumber ?? null,
+    }));
+}
+
+/**
+ * Update a player's contact sharing preferences for a specific season entrant record.
+ * Only the owning user may update their own preferences.
+ */
+export async function updateContactPreferences(
+  seasonEntrantId: number,
+  userId: number,
+  phoneNumber: string | null,
+  shareContact: boolean
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Verify ownership
+  const rows = await db
+    .select()
+    .from(seasonEntrants)
+    .where(and(eq(seasonEntrants.id, seasonEntrantId), eq(seasonEntrants.userId, userId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Season entrant not found or access denied.");
+
+  await db
+    .update(seasonEntrants)
+    .set({ phoneNumber: phoneNumber ?? null, shareContact })
+    .where(eq(seasonEntrants.id, seasonEntrantId));
+}

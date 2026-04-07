@@ -50,6 +50,9 @@ vi.mock("./tournament.db", () => ({
   getAllMatchesBySeason: vi.fn().mockResolvedValue([]),
   getRemovePlayerPreview: vi.fn().mockResolvedValue({ displayName: "Alice Smith", matchCount: 2, fixtureCount: 5, isPaid: true, hasPlayedMatches: true }),
   removePlayerFromSeason: vi.fn().mockResolvedValue({ displayName: "Alice Smith", matchesDeleted: 2, fixturesDeleted: 5 }),
+  getBoxContacts: vi.fn().mockResolvedValue([]),
+  updateContactPreferences: vi.fn().mockResolvedValue(undefined),
+  buildFixtureScheduleSummary: vi.fn().mockResolvedValue([]),
 }));
 
 // Mock notification helper so tests don't make real HTTP calls
@@ -441,5 +444,85 @@ describe("tournament.adminRemovePlayer (admin only)", () => {
     const caller = appRouter.createCaller(makeAdminCtx());
     const result = await caller.tournament.adminRemovePlayer({ seasonEntrantId: 1, confirmationName: "Alice Smith" });
     expect(result).toMatchObject({ displayName: "Alice Smith", matchesDeleted: 2, fixturesDeleted: 5 });
+  });
+});
+
+describe("tournament.getBoxContacts", () => {
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.getBoxContacts({ boxId: 1, seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("throws FORBIDDEN when user is not registered for the season", async () => {
+    const { getSeasonEntrantByUserId } = await import("./tournament.db");
+    vi.mocked(getSeasonEntrantByUserId).mockResolvedValueOnce(undefined);
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.getBoxContacts({ boxId: 1, seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("throws FORBIDDEN when user is not a member of the requested box", async () => {
+    const { getSeasonEntrantByUserId, getMyBox } = await import("./tournament.db");
+    vi.mocked(getSeasonEntrantByUserId).mockResolvedValueOnce({ id: 5, userId: 42, seasonId: 1, displayName: "Test", abilityRating: 3, paid: true, seasonPoints: 0, matchesPlayed: 0, matchesWon: 0, stripePaymentIntentId: null, phoneNumber: null, shareContact: false, createdAt: new Date(), updatedAt: new Date() });
+    vi.mocked(getMyBox).mockResolvedValueOnce({ id: 99, name: "Box 2", seasonId: 1, minAbility: 1, maxAbility: 5, members: [] });
+    const caller = appRouter.createCaller(makeUserCtx());
+    await expect(caller.tournament.getBoxContacts({ boxId: 1, seasonId: 1 })).rejects.toThrow();
+  });
+
+  it("returns contacts for a valid box member", async () => {
+    const { getSeasonEntrantByUserId, getMyBox, getBoxContacts } = await import("./tournament.db");
+    vi.mocked(getSeasonEntrantByUserId).mockResolvedValueOnce({ id: 5, userId: 42, seasonId: 1, displayName: "Test", abilityRating: 3, paid: true, seasonPoints: 0, matchesPlayed: 0, matchesWon: 0, stripePaymentIntentId: null, phoneNumber: null, shareContact: false, createdAt: new Date(), updatedAt: new Date() });
+    vi.mocked(getMyBox).mockResolvedValueOnce({ id: 1, name: "Box 1", seasonId: 1, minAbility: 1, maxAbility: 5, members: [] });
+    vi.mocked(getBoxContacts).mockResolvedValueOnce([{ displayName: "Jane Doe", email: "jane@example.com", phoneNumber: "07700 900456" }]);
+    const caller = appRouter.createCaller(makeUserCtx());
+    const result = await caller.tournament.getBoxContacts({ boxId: 1, seasonId: 1 });
+    expect(result).toHaveLength(1);
+    expect(result[0].displayName).toBe("Jane Doe");
+  });
+});
+
+describe("tournament.updateContactPreferences", () => {
+  it("throws UNAUTHORIZED for unauthenticated users", async () => {
+    const caller = appRouter.createCaller(makePublicCtx());
+    await expect(caller.tournament.updateContactPreferences({ seasonEntrantId: 1, shareContact: true })).rejects.toThrow();
+  });
+
+  it("updates contact preferences for authenticated user", async () => {
+    const { updateContactPreferences } = await import("./tournament.db");
+    vi.mocked(updateContactPreferences).mockResolvedValueOnce(undefined);
+    const caller = appRouter.createCaller(makeUserCtx());
+    const result = await caller.tournament.updateContactPreferences({ seasonEntrantId: 1, phoneNumber: "07700 900123", shareContact: true });
+    expect(result).toEqual({ success: true });
+  });
+
+  it("allows clearing phone number and disabling sharing", async () => {
+    const { updateContactPreferences } = await import("./tournament.db");
+    vi.mocked(updateContactPreferences).mockResolvedValueOnce(undefined);
+    const caller = appRouter.createCaller(makeUserCtx());
+    const result = await caller.tournament.updateContactPreferences({ seasonEntrantId: 1, phoneNumber: null, shareContact: false });
+    expect(result).toEqual({ success: true });
+  });
+});
+
+describe("tournament.register (phone + consent)", () => {
+  it("accepts registration with phone number and consent", async () => {
+    const { getSeasonById, getSeasonEntrantByUserId, createSeasonEntrant } = await import("./tournament.db");
+    vi.mocked(getSeasonById).mockResolvedValueOnce({ id: 1, name: "Spring 2026", status: "registration", year: 2026, quarter: "spring", startDate: new Date(), endDate: new Date(), registrationDeadline: new Date() });
+    vi.mocked(getSeasonEntrantByUserId).mockResolvedValueOnce(null);
+    vi.mocked(createSeasonEntrant).mockResolvedValueOnce({ id: 5, userId: 42, seasonId: 1, displayName: "Test Player", abilityRating: 3, paid: false, seasonPoints: 0, matchesPlayed: 0, matchesWon: 0, stripePaymentIntentId: null, phoneNumber: "07700 900123", shareContact: true, createdAt: new Date(), updatedAt: new Date() });
+    const caller = appRouter.createCaller(makeUserCtx());
+    const result = await caller.tournament.register({ seasonId: 1, displayName: "Test Player", abilityRating: 3, phoneNumber: "07700 900123", shareContact: true });
+    expect(result.phoneNumber).toBe("07700 900123");
+    expect(result.shareContact).toBe(true);
+  });
+
+  it("accepts registration without phone number (defaults to no sharing)", async () => {
+    const { getSeasonById, getSeasonEntrantByUserId, createSeasonEntrant } = await import("./tournament.db");
+    vi.mocked(getSeasonById).mockResolvedValueOnce({ id: 1, name: "Spring 2026", status: "registration", year: 2026, quarter: "spring", startDate: new Date(), endDate: new Date(), registrationDeadline: new Date() });
+    vi.mocked(getSeasonEntrantByUserId).mockResolvedValueOnce(null);
+    vi.mocked(createSeasonEntrant).mockResolvedValueOnce({ id: 6, userId: 42, seasonId: 1, displayName: "Test Player 2", abilityRating: 3, paid: false, seasonPoints: 0, matchesPlayed: 0, matchesWon: 0, stripePaymentIntentId: null, phoneNumber: null, shareContact: false, createdAt: new Date(), updatedAt: new Date() });
+    const caller = appRouter.createCaller(makeUserCtx());
+    const result = await caller.tournament.register({ seasonId: 1, displayName: "Test Player 2", abilityRating: 3 });
+    expect(result.phoneNumber).toBeNull();
+    expect(result.shareContact).toBe(false);
   });
 });

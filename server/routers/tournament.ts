@@ -49,6 +49,8 @@ import {
   getFixtureBalanceSummary,
   removePlayerFromSeason,
   getRemovePlayerPreview,
+  getBoxContacts,
+  updateContactPreferences,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -87,6 +89,10 @@ export const tournamentRouter = router({
         seasonId: z.number(),
         displayName: z.string().min(2).max(128),
         abilityRating: z.number().int().min(1).max(5),
+        /** Optional phone number — stored only if player consents to sharing */
+        phoneNumber: z.string().max(32).optional(),
+        /** Whether the player consents to sharing their contact details with box-mates */
+        shareContact: z.boolean().optional().default(false),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -111,6 +117,8 @@ export const tournamentRouter = router({
         displayName: input.displayName,
         abilityRating: input.abilityRating,
         paid: false,
+        phoneNumber: input.phoneNumber ?? null,
+        shareContact: input.shareContact ?? false,
       });
     }),
 
@@ -816,5 +824,48 @@ export const tournamentRouter = router({
       });
 
       return result;
+    }),
+
+  /**
+   * Get contact details of box-mates who have consented to sharing.
+   * Only returns players in the same box as the requesting user.
+   */
+  getBoxContacts: protectedProcedure
+    .input(z.object({ boxId: z.number(), seasonId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      // Verify the requesting user is actually a member of this box
+      const entrant = await getSeasonEntrantByUserId(ctx.user.id, input.seasonId);
+      if (!entrant) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Not registered for this season." });
+      }
+      const myBox = await getMyBox(entrant.id);
+      if (!myBox || myBox.id !== input.boxId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You are not a member of this box.",
+        });
+      }
+      return getBoxContacts(input.boxId, ctx.user.id);
+    }),
+
+  /**
+   * Update the current user's contact sharing preferences for a season entrant record.
+   */
+  updateContactPreferences: protectedProcedure
+    .input(
+      z.object({
+        seasonEntrantId: z.number(),
+        phoneNumber: z.string().max(32).nullable().optional(),
+        shareContact: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await updateContactPreferences(
+        input.seasonEntrantId,
+        ctx.user.id,
+        input.phoneNumber ?? null,
+        input.shareContact
+      );
+      return { success: true };
     }),
 });

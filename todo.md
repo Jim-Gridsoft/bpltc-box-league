@@ -334,3 +334,16 @@
 - [x] Updated meta description to accurately describe the box league
 - [x] No other hardcoded title references found in server or shared code
 - [x] 88/88 tests passing, 0 TypeScript errors
+
+## Round 38 — Phone Number & Contact Sharing at Registration
+
+- [x] Schema: added phoneNumber (nullable varchar 32) and shareContact (boolean, default false) to seasonEntrants table
+- [x] DB migration: pnpm db:push applied (migration 0008 — phoneNumber + shareContact columns on season_entrants)
+- [x] Backend: register procedure now accepts optional phoneNumber and shareContact fields
+- [x] Backend: getBoxContacts DB function + tRPC procedure — returns consented box-mates' name, email, phone (excludes self; verifies box membership)
+- [x] Backend: updateContactPreferences DB function + tRPC procedure — owner-only, updates phone/consent at any time
+- [x] Dashboard registration form: phone number field (optional) + consent checkbox with clear wording
+- [x] Dashboard: "Edit my preferences" inline panel for updating phone/consent post-registration
+- [x] Dashboard: "Box Contact Details" panel showing box-mates who have consented (mailto/tel links)
+- [x] Tests: 9 new tests (getBoxContacts access x3, data, updateContactPreferences x2, register with/without phone x2)
+- [x] 97/97 tests passing, 0 TypeScript errors
