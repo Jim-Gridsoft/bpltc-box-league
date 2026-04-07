@@ -629,6 +629,7 @@ export const tournamentRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin only." });
       const season = await getSeasonById(input.seasonId);
       if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
       return sandboxRegisterAndPay(

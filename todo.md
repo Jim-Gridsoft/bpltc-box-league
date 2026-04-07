@@ -320,3 +320,10 @@
 - [x] Home page How It Works Step 2: removed "6–8" → "based on the number of entrants"
 - [x] Home page Rules: removed "6–8 players" → "Box sizes are determined by the total number of entrants"
 - [x] 88/88 tests passing, 0 TypeScript errors
+
+## Round 36 — Hide "Register Free (Testing)" from Non-Admin Users
+
+- [x] Found in Dashboard.tsx registration card
+- [x] Frontend: wrapped the Demo/Free registration block in `user?.role === "admin"` guard — invisible to regular players
+- [x] Backend: added `if (ctx.user.role !== "admin") throw FORBIDDEN` guard to sandboxRegister procedure
+- [x] 88/88 tests passing, 0 TypeScript errors
