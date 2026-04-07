@@ -88,6 +88,7 @@ const RULES = [
   "The committee reserves the right to amend or remove any result that appears inaccurate.",
   "Entry fees are non-refundable once a season has commenced.",
   "Balls are not provided by the club. Players are responsible for bringing their own balls to each match.",
+  "Contact details (phone number and email) are only shared with other members of your box if you explicitly opt in during registration. You may update your sharing preferences at any time from your Dashboard.",
 ];
 
 const AWARDS = [

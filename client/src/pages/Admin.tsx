@@ -297,6 +297,11 @@ export default function Admin() {
                         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${e.paid ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
                           {e.paid ? "Paid" : "Unpaid"}
                         </span>
+                        {(e as any).shareContact && (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                            Sharing
+                          </span>
+                        )}
                         {expandedEntrant === e.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                       </div>
                     </div>

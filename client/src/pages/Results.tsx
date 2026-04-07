@@ -16,6 +16,9 @@ import {
   X,
   Trophy,
   Eye,
+  Phone,
+  Mail,
+  UserCheck,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -329,6 +332,10 @@ export default function Results() {
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!myEntry?.paid }
   );
+  const { data: boxContacts } = trpc.tournament.getBoxContacts.useQuery(
+    { boxId: boxData?.boxId ?? 0, seasonId: activeSeason?.id ?? 0 },
+    { enabled: !!boxData?.boxId && !!activeSeason?.id }
+  );
 
   if (authLoading)
     return (
@@ -491,6 +498,45 @@ export default function Results() {
             </div>
           )}
         </div>
+
+        {/* Box Contact Details */}
+        {boxData?.boxId && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Phone className="w-5 h-5 text-[#1b4332]" />
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">Box Contact Details</h2>
+            </div>
+            {boxContacts && boxContacts.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500 mb-3">
+                  The following box-mates have chosen to share their contact details so you can arrange matches.
+                </p>
+                {boxContacts.map((contact, i) => (
+                  <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 px-4 py-3 bg-gray-50 rounded-lg">
+                    <span className="font-medium text-gray-800 min-w-[140px]">{contact.displayName}</span>
+                    {contact.email && (
+                      <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline">
+                        <Mail className="w-3.5 h-3.5" />
+                        {contact.email}
+                      </a>
+                    )}
+                    {contact.phoneNumber && (
+                      <a href={`tel:${contact.phoneNumber}`} className="flex items-center gap-1.5 text-sm text-green-700 hover:underline">
+                        <Phone className="w-3.5 h-3.5" />
+                        {contact.phoneNumber}
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <UserCheck className="w-4 h-4" />
+                <span>No box-mates have shared their contact details yet. You can update your own preferences on the Dashboard.</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* My match history */}
         {myMatches && myMatches.length > 0 && (

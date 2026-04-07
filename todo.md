@@ -347,3 +347,10 @@
 - [x] Dashboard: "Box Contact Details" panel showing box-mates who have consented (mailto/tel links)
 - [x] Tests: 9 new tests (getBoxContacts access x3, data, updateContactPreferences x2, register with/without phone x2)
 - [x] 97/97 tests passing, 0 TypeScript errors
+
+## Round 39 — Contact Sharing Follow-on Improvements
+
+- [x] Admin Entrants tab: added blue "Sharing" badge next to entrants who have shareContact=true; getAllSeasonEntrants now returns shareContact and phoneNumber fields
+- [x] My Results page: added Box Contact Details panel with mailto/tel links, matching Dashboard implementation
+- [x] Home page Rules section: added privacy notice — contact details only shared with explicit opt-in, updateable from Dashboard
+- [x] 97/97 tests passing, 0 TypeScript errors

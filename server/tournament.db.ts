@@ -196,6 +196,8 @@ export async function getAllSeasonEntrants(seasonId: number) {
       matchesPlayed: seasonEntrants.matchesPlayed,
       matchesWon: seasonEntrants.matchesWon,
       stripePaymentIntentId: seasonEntrants.stripePaymentIntentId,
+      phoneNumber: seasonEntrants.phoneNumber,
+      shareContact: seasonEntrants.shareContact,
       createdAt: seasonEntrants.createdAt,
       email: users.email,
     })
