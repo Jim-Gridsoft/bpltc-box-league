@@ -11,6 +11,7 @@ import Stripe from "stripe";
 import { markSeasonEntrantPaid, getSeasonEntrantById } from "../tournament.db";
 import { notifyOwner } from "./notification";
 import { runSchemaHealthCheck } from "../schemaHealthCheck";
+import { runAdminSeed } from "../adminSeed";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -120,6 +121,10 @@ async function startServer() {
     // Non-fatal schema health check — warns in logs if columns are missing
     runSchemaHealthCheck().catch((e) =>
       console.warn("[SchemaHealthCheck] Unexpected error:", e)
+    );
+    // Promote hardcoded admin email addresses on every startup (idempotent)
+    runAdminSeed().catch((e) =>
+      console.warn("[AdminSeed] Unexpected error:", e)
     );
   });
 }

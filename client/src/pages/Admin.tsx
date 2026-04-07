@@ -86,6 +86,7 @@ export default function Admin() {
   const [confirmDeleteSeasonId, setConfirmDeleteSeasonId] = useState<number | null>(null);
   const [confirmRegenFixtures, setConfirmRegenFixtures] = useState(false);
   const [confirmEndSeasonId, setConfirmEndSeasonId] = useState<number | null>(null);
+  const [confirmStatusChange, setConfirmStatusChange] = useState<{ seasonId: number; seasonName: string; from: string; to: string } | null>(null);
   const [endSeasonResult, setEndSeasonResult] = useState<{ seasonId: number; summary: { boxId: number; boxName: string; level: number; outcomes: { entrantId: number; userId: number; displayName: string; rank: number; points: number; outcome: "promoted" | "stayed" | "relegated"; newAbilityRating: number }[] }[] } | null>(null);
   const endSeasonMutation = trpc.tournament.adminEndSeason.useMutation({
     onSuccess: (data, variables) => {
@@ -631,8 +632,13 @@ export default function Admin() {
                         </div>
                         <div className="flex items-center gap-3">
                           <select
-                            value={s.status}
-                            onChange={(e) => updateStatusMutation.mutate({ seasonId: s.id, status: e.target.value as "upcoming" | "registration" | "active" | "completed" })}
+                            value={confirmStatusChange?.seasonId === s.id ? confirmStatusChange.to : s.status}
+                            onChange={(e) => {
+                              const newStatus = e.target.value as "upcoming" | "registration" | "active" | "completed";
+                              if (newStatus !== s.status) {
+                                setConfirmStatusChange({ seasonId: s.id, seasonName: s.name, from: s.status, to: newStatus });
+                              }
+                            }}
                             disabled={updateStatusMutation.isPending}
                             className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-medium capitalize focus:outline-none focus:ring-2 focus:ring-[#1b4332] bg-white"
                           >
@@ -660,6 +666,51 @@ export default function Admin() {
                           )}
                         </div>
                       </div>
+                      {/* Inline status change confirmation */}
+                      {confirmStatusChange?.seasonId === s.id && (
+                        <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                          <p className="text-sm font-semibold text-blue-800 mb-1">
+                            Change status of "{confirmStatusChange.seasonName}"?
+                          </p>
+                          <p className="text-xs text-blue-700 mb-3">
+                            This will change the season status from{" "}
+                            <span className="font-semibold capitalize">{confirmStatusChange.from}</span>{" "}to{" "}
+                            <span className="font-semibold capitalize">{confirmStatusChange.to}</span>.
+                            {confirmStatusChange.to === "active" && (
+                              <span className="block mt-1 font-semibold text-amber-700">
+                                ⚠ Setting a season to Active will make it the current season visible to all players.
+                              </span>
+                            )}
+                            {confirmStatusChange.to === "completed" && (
+                              <span className="block mt-1 font-semibold text-amber-700">
+                                ⚠ Marking a season as Completed will hide it from the active season view. Use "End Season" to also calculate final standings.
+                              </span>
+                            )}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => {
+                                updateStatusMutation.mutate({
+                                  seasonId: confirmStatusChange.seasonId,
+                                  status: confirmStatusChange.to as "upcoming" | "registration" | "active" | "completed",
+                                });
+                                setConfirmStatusChange(null);
+                              }}
+                              disabled={updateStatusMutation.isPending}
+                              className="bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                            >
+                              {updateStatusMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              Yes, change status
+                            </button>
+                            <button
+                              onClick={() => setConfirmStatusChange(null)}
+                              className="text-sm text-gray-500 hover:text-gray-700 transition-colors px-3 py-1.5"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {/* Inline end season confirmation */}
                       {confirmEndSeasonId === s.id && (
                         <div className="mt-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
