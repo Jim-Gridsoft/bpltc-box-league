@@ -137,10 +137,19 @@ export default function Home() {
   const { data: allSeasons } = trpc.tournament.seasons.useQuery();
   const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
 
-  // Show active + upcoming seasons; hide completed ones
+  // Show active + upcoming seasons; hide completed ones.
+  // Order: active first, then registration open, then upcoming — oldest start date first within each group.
+  const STATUS_ORDER: Record<string, number> = { active: 0, registration: 1, upcoming: 2 };
   const visibleSeasons = useMemo(() => {
     if (!allSeasons) return [];
-    return allSeasons.filter((s) => s.status !== "completed");
+    return allSeasons
+      .filter((s) => s.status !== "completed")
+      .sort((a, b) => {
+        const statusDiff = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+        if (statusDiff !== 0) return statusDiff;
+        // Within same status group, oldest start date first
+        return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
+      });
   }, [allSeasons]);
 
   const currentSeasonName = currentSeason?.name ?? null;
