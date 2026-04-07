@@ -309,3 +309,14 @@
 - [x] Admin UI: Two-step confirmation dialog — Step 1: impact summary (fixtures/matches to delete, paid warning, played matches warning); Step 2: type player name to confirm
 - [x] Tests: 7 new tests (preview access control, preview data, remove access control, name mismatch rejection, successful removal)
 - [x] 88/88 tests passing, 0 TypeScript errors
+
+## Round 35 — Fix Pairing Copy on Standings Page & Dynamic Season on Home Page
+
+- [x] Standings page: updated "cannot play with same partner twice" → "system rotates partners as much as possible across the season"
+- [x] Home page: Season Calendar now dynamically fetches all non-completed seasons via trpc.tournament.seasons; shows status badge (Registration Open / Active / Upcoming), dates, and registration deadline
+- [x] Home page: CTA copy uses dynamic currentSeason.name instead of hardcoded "Spring 2026"
+- [x] Home page: falls back gracefully to "No upcoming seasons scheduled" when no seasons exist
+- [x] Home page Rules: added "Balls are not provided by the club. Players are responsible for bringing their own balls to each match."
+- [x] Home page How It Works Step 2: removed "6–8" → "based on the number of entrants"
+- [x] Home page Rules: removed "6–8 players" → "Box sizes are determined by the total number of entrants"
+- [x] 88/88 tests passing, 0 TypeScript errors

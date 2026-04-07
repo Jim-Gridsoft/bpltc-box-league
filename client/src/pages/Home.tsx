@@ -15,7 +15,8 @@ import {
   ArrowUpDown,
   CheckCircle2,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { trpc } from "@/lib/trpc";
 
 const HERO_IMAGE =
   "https://d2xsxph8kpxj0f.cloudfront.net/310519663452042921/PTKxsipnFcy6SZgTVAYLQb/ladder-hero-8P36hrf3wYXvayVXguUpki.webp";
@@ -49,7 +50,7 @@ const HOW_IT_WORKS = [
   {
     icon: Users,
     title: "Get Placed in a Box",
-    body: "The committee seeds players into ability-matched boxes of 6–8. You will play every other player in your box over the 3-month season — roughly one match per month.",
+    body: "The committee seeds players into ability-matched boxes based on the number of entrants. You will play every other player in your box over the 3-month season — roughly one match per month.",
   },
   {
     icon: RefreshCw,
@@ -73,14 +74,10 @@ const HOW_IT_WORKS = [
   },
 ];
 
-const SEASONS = [
-  { name: "Spring 2026", dates: "1 Apr – 30 Jun 2026" },
-];
-
 const RULES = [
   "Entry fee is £20 per player per season.",
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
-  "Players are seeded into ability-matched boxes of 6–8 players by the committee at the start of each season.",
+  "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
   "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
   "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
@@ -90,6 +87,7 @@ const RULES = [
   "Results are self-reported via the website and are subject to committee verification.",
   "The committee reserves the right to amend or remove any result that appears inaccurate.",
   "Entry fees are non-refundable once a season has commenced.",
+  "Balls are not provided by the club. Players are responsible for bringing their own balls to each match.",
 ];
 
 const AWARDS = [
@@ -120,6 +118,13 @@ const AWARDS = [
   },
 ];
 
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  registration: { label: "Registration Open", color: "#c9a84c" },
+  active: { label: "Active", color: "#2d6a4f" },
+  upcoming: { label: "Upcoming", color: "#6b7280" },
+  completed: { label: "Completed", color: "#9ca3af" },
+};
+
 export default function Home() {
   const { isAuthenticated } = useAuth();
   const heroRef = useFadeUp();
@@ -127,6 +132,17 @@ export default function Home() {
   const seasonsRef = useFadeUp();
   const rulesRef = useFadeUp();
   const awardsRef = useFadeUp();
+
+  const { data: allSeasons } = trpc.tournament.seasons.useQuery();
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+
+  // Show active + upcoming seasons; hide completed ones
+  const visibleSeasons = useMemo(() => {
+    if (!allSeasons) return [];
+    return allSeasons.filter((s) => s.status !== "completed");
+  }, [allSeasons]);
+
+  const currentSeasonName = currentSeason?.name ?? null;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--cream)" }}>
@@ -308,25 +324,50 @@ export default function Home() {
                 — you can enter whenever a season is open, making it easy to fit around other commitments.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-sm mx-auto sm:max-w-none">
-              {SEASONS.map(({ name, dates }) => (
-                <div
-                  key={name}
-                  className="rounded-lg p-5 border text-center"
-                  style={{ background: "#fff", borderColor: "var(--cream-dark)" }}
-                >
-                  <p
-                    className="text-2xl font-bold"
-                    style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-                  >
-                    {name}
-                  </p>
-                  <p className="text-xs mt-2" style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {dates}
-                  </p>
-                </div>
-              ))}
-            </div>
+            {visibleSeasons.length === 0 ? (
+              <p className="text-center text-sm" style={{ color: "var(--charcoal-mid)" }}>No upcoming seasons have been scheduled yet. Check back soon.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {visibleSeasons.map((season) => {
+                  const statusInfo = STATUS_LABELS[season.status] ?? { label: season.status, color: "#6b7280" };
+                  const start = season.startDate ? new Date(season.startDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+                  const end = season.endDate ? new Date(season.endDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+                  const deadline = season.registrationDeadline ? new Date(season.registrationDeadline).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+                  return (
+                    <div
+                      key={season.id}
+                      className="rounded-lg p-5 border"
+                      style={{ background: "#fff", borderColor: "var(--cream-dark)" }}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <p
+                          className="text-xl font-bold"
+                          style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
+                        >
+                          {season.name}
+                        </p>
+                        <span
+                          className="text-xs font-semibold px-2 py-1 rounded-full"
+                          style={{ background: `${statusInfo.color}18`, color: statusInfo.color, fontFamily: "'Space Grotesk', sans-serif" }}
+                        >
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                      {start && end && (
+                        <p className="text-xs" style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                          {start} – {end}
+                        </p>
+                      )}
+                      {deadline && season.status === "registration" && (
+                        <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}>
+                          Registration closes: {deadline}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -431,7 +472,7 @@ export default function Home() {
           </h2>
           <p className="text-lg mb-8 max-w-lg mx-auto" style={{ color: "var(--charcoal-mid)" }}>
             Sign in, register your name and ability rating, and pay the £20 seasonal entry fee to secure
-            your place in the Spring 2026 box league.
+            your place in the{currentSeasonName ? ` ${currentSeasonName}` : ""} box league.
           </p>
           {isAuthenticated ? (
             <Link href="/dashboard">

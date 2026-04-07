@@ -207,7 +207,7 @@ export default function Leaderboard() {
             <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">1</div><div className="text-green-200">Won a set but lost the match</div></div>
             <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">0</div><div className="text-green-200">Lost both sets (2-0)</div></div>
           </div>
-          <p className="text-green-200 text-sm mt-4">Partners rotate each match — you cannot play with the same partner twice in a season. Win a set and you earn a point even in defeat.</p>
+          <p className="text-green-200 text-sm mt-4">Partners are maximally varied each match — the system rotates partners as much as possible across the season. Win a set and you earn a point even in defeat.</p>
         </div>
       </div>
     </div>
