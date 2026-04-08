@@ -1,5 +1,4 @@
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import { Trophy, LayoutDashboard, Home, LogOut, LogIn, ShieldCheck, ClipboardList, MessageSquare } from "lucide-react";
@@ -76,15 +75,16 @@ export default function TournamentNav() {
               </Button>
             </>
           ) : (
-            <Button
-              size="sm"
-              onClick={() => (window.location.href = getLoginUrl())}
-              className="flex items-center gap-1.5"
-              style={{ background: "var(--green-deep)", color: "var(--cream)" }}
-            >
-              <LogIn size={13} />
-              Sign in
-            </Button>
+            <Link href="/login">
+              <Button
+                size="sm"
+                className="flex items-center gap-1.5"
+                style={{ background: "var(--green-deep)", color: "var(--cream)" }}
+              >
+                <LogIn size={13} />
+                Sign in
+              </Button>
+            </Link>
           )}
         </div>
       </div>

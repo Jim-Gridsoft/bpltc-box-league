@@ -1,18 +1,69 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { tournamentRouter } from "./routers/tournament";
-import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus, getAdminEmails } from "./db";
+import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus } from "./db";
 import { notifyOwner } from "./_core/notification";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import {
+  getUserByEmail,
+  createUserWithPassword,
+  verifyPassword,
+  createEmailSessionToken,
+} from "./_core/emailAuth";
 
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+
+    /** Register a new account with email + password */
+    register: publicProcedure
+      .input(z.object({
+        name: z.string().min(2).max(128),
+        email: z.string().email(),
+        password: z.string().min(8).max(128),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const existing = await getUserByEmail(input.email);
+        if (existing) {
+          throw new TRPCError({ code: "CONFLICT", message: "An account with this email already exists." });
+        }
+        const user = await createUserWithPassword({
+          name: input.name,
+          email: input.email,
+          password: input.password,
+        });
+        const token = await createEmailSessionToken(user.id, user.email!);
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+      }),
+
+    /** Sign in with email + password */
+    login: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string().min(1),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await getUserByEmail(input.email);
+        if (!user || !user.passwordHash) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password." });
+        }
+        const valid = await verifyPassword(input.password, user.passwordHash);
+        if (!valid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid email or password." });
+        }
+        const token = await createEmailSessionToken(user.id, user.email!);
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
+      }),
+
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -60,7 +111,7 @@ export const appRouter = router({
           matchId: input.matchId ?? null,
           fixtureId: input.fixtureId ?? null,
         });
-        // Notify the owner via Manus notification
+        // Notify the owner via notification
         await notifyOwner({
           title: `🎾 Dispute / Admin Contact: ${input.subject}`,
           content: `From: ${ctx.user.name ?? ctx.user.email ?? "Unknown player"}\n\n${input.description}${

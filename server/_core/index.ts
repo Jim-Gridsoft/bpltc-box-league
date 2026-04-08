@@ -12,6 +12,7 @@ import { markSeasonEntrantPaid, getSeasonEntrantById } from "../tournament.db";
 import { notifyOwner } from "./notification";
 import { runSchemaHealthCheck } from "../schemaHealthCheck";
 import { runAdminSeed } from "../adminSeed";
+import { runMigrations } from "../runMigrations";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -118,6 +119,10 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Run pending DB migrations on startup (idempotent)
+    runMigrations().catch((e) =>
+      console.warn("[Migrations] Unexpected error:", e)
+    );
     // Non-fatal schema health check — warns in logs if columns are missing
     runSchemaHealthCheck().catch((e) =>
       console.warn("[SchemaHealthCheck] Unexpected error:", e)
