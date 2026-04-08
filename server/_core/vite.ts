@@ -1,22 +1,27 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import { type Server } from "http";
-import { nanoid } from "nanoid";
 import path from "path";
-import { createServer as createViteServer } from "vite";
-import viteConfig from "../../vite.config";
 
+// setupVite is only called in development.
+// It dynamically imports vite so that the production bundle (built with esbuild
+// --packages=external) never references vite at all.
 export async function setupVite(app: Express, server: Server) {
-  const serverOptions = {
-    middlewareMode: true,
-    hmr: { server },
-    allowedHosts: true as const,
-  };
+  // Dynamic imports keep vite out of the production bundle entirely.
+  const { createServer: createViteServer } = await import("vite");
+  const { nanoid } = await import("nanoid");
+
+  const projectRoot = path.resolve(import.meta.dirname, "../..");
 
   const vite = await createViteServer({
-    ...viteConfig,
-    configFile: false,
-    server: serverOptions,
+    // Let vite discover vite.config.ts automatically — no static import needed.
+    configFile: path.join(projectRoot, "vite.config.ts"),
+    root: path.join(projectRoot, "client"),
+    server: {
+      middlewareMode: true,
+      hmr: { server },
+      allowedHosts: true as const,
+    },
     appType: "custom",
   });
 
@@ -25,14 +30,9 @@ export async function setupVite(app: Express, server: Server) {
     const url = req.originalUrl;
 
     try {
-      const clientTemplate = path.resolve(
-        import.meta.dirname,
-        "../..",
-        "client",
-        "index.html"
-      );
+      const clientTemplate = path.resolve(projectRoot, "client", "index.html");
 
-      // always reload the index.html file from disk incase it changes
+      // always reload the index.html file from disk in case it changes
       let template = await fs.promises.readFile(clientTemplate, "utf-8");
       template = template.replace(
         `src="/src/main.tsx"`,
