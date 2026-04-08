@@ -368,7 +368,7 @@ export default function Home() {
                           {start} – {end}
                         </p>
                       )}
-                      {deadline && season.status === "registration" && (
+                      {deadline && (season.status === "registration" || season.status === "active") && (
                         <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)", fontFamily: "'Space Grotesk', sans-serif" }}>
                           Registration closes: {deadline}
                         </p>
