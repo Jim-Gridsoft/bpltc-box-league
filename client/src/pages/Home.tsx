@@ -15,8 +15,10 @@ import {
   ArrowUpDown,
   CheckCircle2,
 } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
+
+type Division = "mens" | "ladies";
 
 const HERO_IMAGE =
   "https://d2xsxph8kpxj0f.cloudfront.net/310519663452042921/PTKxsipnFcy6SZgTVAYLQb/ladder-hero-8P36hrf3wYXvayVXguUpki.webp";
@@ -74,9 +76,26 @@ const HOW_IT_WORKS = [
   },
 ];
 
-const RULES = [
+const RULES_MENS = [
   "Entry fee is £10 per player per season.",
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
+  "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
+  "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
+  "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
+  "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
+  "Box standings are determined by points, then by matches won, then by sets won.",
+  "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
+  "Year-long points accumulate across all seasons played in a year and determine the overall annual champion.",
+  "Results are self-reported via the website and are subject to committee verification.",
+  "The committee reserves the right to amend or remove any result that appears inaccurate.",
+  "Entry fees are non-refundable once a season has commenced.",
+  "Balls are not provided by the club. Players are responsible for bringing their own balls to each match.",
+  "Contact details (phone number and email) are only shared with other members of your box if you explicitly opt in during registration. You may update your sharing preferences at any time from your Dashboard.",
+];
+
+const RULES_LADIES = [
+  "Entry fee is £10 per player per season.",
+  "The competition is open to female members of Bramhall Park Lawn Tennis Club.",
   "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
   "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
@@ -128,17 +147,16 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
+  const [division, setDivision] = useState<Division>("mens");
   const heroRef = useFadeUp();
   const howRef = useFadeUp();
   const seasonsRef = useFadeUp();
   const rulesRef = useFadeUp();
   const awardsRef = useFadeUp();
 
-  const { data: allSeasons } = trpc.tournament.seasons.useQuery();
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const { data: allSeasons } = trpc.tournament.seasons.useQuery({ division });
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
 
-  // Show active + upcoming seasons; hide completed ones.
-  // Order: active first, then registration open, then upcoming — oldest start date first within each group.
   const STATUS_ORDER: Record<string, number> = { active: 0, registration: 1, upcoming: 2 };
   const visibleSeasons = useMemo(() => {
     if (!allSeasons) return [];
@@ -147,22 +165,60 @@ export default function Home() {
       .sort((a, b) => {
         const statusDiff = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
         if (statusDiff !== 0) return statusDiff;
-        // Within same status group, oldest start date first
         return new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
       });
   }, [allSeasons]);
 
   const currentSeasonName = currentSeason?.name ?? null;
+  const isMens = division === "mens";
+  const divisionLabel = isMens ? "Men's" : "Ladies'";
+  const RULES = isMens ? RULES_MENS : RULES_LADIES;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--cream)" }}>
       <TournamentNav />
 
+      {/* Division Toggle */}
+      <div
+        className="sticky top-0 z-40 border-b"
+        style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.12)" }}
+      >
+        <div className="container flex items-center justify-center gap-2 py-3">
+          <span className="text-xs font-semibold mr-2" style={{ color: "rgba(250,246,238,0.6)", fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "0.08em" }}>
+            COMPETITION
+          </span>
+          <button
+            onClick={() => setDivision("mens")}
+            className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all"
+            style={{
+              background: isMens ? "var(--gold)" : "transparent",
+              color: isMens ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
+              border: isMens ? "none" : "1px solid rgba(250,246,238,0.3)",
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}
+          >
+            Men's
+          </button>
+          <button
+            onClick={() => setDivision("ladies")}
+            className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all"
+            style={{
+              background: !isMens ? "var(--gold)" : "transparent",
+              color: !isMens ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
+              border: !isMens ? "none" : "1px solid rgba(250,246,238,0.3)",
+              fontFamily: "'Space Grotesk', sans-serif",
+            }}
+          >
+            Ladies'
+          </button>
+        </div>
+      </div>
+
       {/* Hero */}
       <header className="relative overflow-hidden" style={{ minHeight: "540px" }}>
         <img
           src={HERO_IMAGE}
-          alt="Men's doubles tennis at Bramhall Park LTC"
+          alt={`${divisionLabel} doubles tennis at Bramhall Park LTC`}
           className="absolute inset-0 w-full h-full object-cover"
           style={{ objectPosition: "center 35%" }}
         />
@@ -185,7 +241,7 @@ export default function Home() {
               className="text-5xl md:text-6xl font-bold mb-4 leading-tight"
               style={{ fontFamily: "'Cormorant Garamond', serif", color: "#faf6ee" }}
             >
-              Men's Doubles<br />Box League
+              {divisionLabel} Doubles<br />Box League
             </h1>
             <p
               className="text-lg md:text-xl leading-relaxed mb-8"
@@ -206,14 +262,15 @@ export default function Home() {
                   </Button>
                 </Link>
               ) : (
-                <Button
-                  size="lg"
-                  onClick={() => (window.location.href = getLoginUrl())}
-                  style={{ background: "var(--gold)", color: "var(--green-deep)", fontWeight: 600 }}
-                >
-                  <CreditCard size={16} className="mr-2" />
-                  Register & Enter — £10
-                </Button>
+                <Link href="/login">
+                  <Button
+                    size="lg"
+                    style={{ background: "var(--gold)", color: "var(--green-deep)", fontWeight: 600 }}
+                  >
+                    <CreditCard size={16} className="mr-2" />
+                    Register & Enter — £10
+                  </Button>
+                </Link>
               )}
               <Link href="/leaderboard">
                 <Button
@@ -321,7 +378,7 @@ export default function Home() {
                 className="label-tag"
                 style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                Season Calendar
+                {divisionLabel} Season Calendar
               </span>
               <h2
                 className="text-4xl font-semibold mt-2"
@@ -335,7 +392,9 @@ export default function Home() {
               </p>
             </div>
             {visibleSeasons.length === 0 ? (
-              <p className="text-center text-sm" style={{ color: "var(--charcoal-mid)" }}>No upcoming seasons have been scheduled yet. Check back soon.</p>
+              <p className="text-center text-sm" style={{ color: "var(--charcoal-mid)" }}>
+                No upcoming {divisionLabel.toLowerCase()} seasons have been scheduled yet. Check back soon.
+              </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visibleSeasons.map((season) => {
@@ -444,7 +503,7 @@ export default function Home() {
                 className="label-tag"
                 style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                Competition Rules
+                {divisionLabel} Competition Rules
               </span>
               <h2
                 className="text-4xl font-semibold mt-2"
@@ -482,7 +541,7 @@ export default function Home() {
           </h2>
           <p className="text-lg mb-8 max-w-lg mx-auto" style={{ color: "var(--charcoal-mid)" }}>
             Sign in, register your name and ability rating, and pay the £10 seasonal entry fee to secure
-            your place in the{currentSeasonName ? ` ${currentSeasonName}` : ""} box league.
+            your place in the{currentSeasonName ? ` ${currentSeasonName}` : ` ${divisionLabel.toLowerCase()}`} box league.
           </p>
           {isAuthenticated ? (
             <Link href="/dashboard">
@@ -495,14 +554,15 @@ export default function Home() {
               </Button>
             </Link>
           ) : (
-            <Button
-              size="lg"
-              onClick={() => (window.location.href = getLoginUrl())}
-              style={{ background: "var(--green-deep)", color: "var(--cream)", fontWeight: 600 }}
-            >
-              <CreditCard size={16} className="mr-2" />
-              Sign In & Register — £10
-            </Button>
+            <Link href="/login">
+              <Button
+                size="lg"
+                style={{ background: "var(--green-deep)", color: "var(--cream)", fontWeight: 600 }}
+              >
+                <CreditCard size={16} className="mr-2" />
+                Sign In & Register — £10
+              </Button>
+            </Link>
           )}
         </div>
       </section>
@@ -520,7 +580,7 @@ export default function Home() {
             Bramhall Park Lawn Tennis Club — Est. 1926
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)" }}>
-            Centenary Year 2026 · Men's Doubles Box League
+            Centenary Year 2026 · {divisionLabel} Doubles Box League
           </p>
         </div>
       </footer>

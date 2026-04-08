@@ -40,6 +40,8 @@ export const seasons = mysqlTable("seasons", {
   status: mysqlEnum("status", ["upcoming", "registration", "active", "completed"])
     .default("upcoming")
     .notNull(),
+  /** Which competition this season belongs to */
+  division: mysqlEnum("division", ["mens", "ladies"]).default("mens").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

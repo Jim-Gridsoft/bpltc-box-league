@@ -63,15 +63,19 @@ function getStripe() {
 export const tournamentRouter = router({
   // ── Seasons (public) ────────────────────────────────────────────────────────
 
-  /** List all seasons */
-  seasons: publicProcedure.query(async () => {
-    return getAllSeasons();
-  }),
+  /** List all seasons, optionally filtered by division */
+  seasons: publicProcedure
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .query(async ({ input }) => {
+      return getAllSeasons(input?.division);
+    }),
 
-  /** Get the currently open/active season */
-  currentSeason: publicProcedure.query(async () => {
-    return (await getOpenSeason()) ?? null;
-  }),
+  /** Get the currently open/active season for a division */
+  currentSeason: publicProcedure
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .query(async ({ input }) => {
+      return (await getOpenSeason(input?.division)) ?? null;
+    }),
 
   // ── Season Entry ────────────────────────────────────────────────────────────
 
@@ -300,6 +304,7 @@ export const tournamentRouter = router({
         startDate: z.date(),
         endDate: z.date(),
         registrationDeadline: z.date(),
+        division: z.enum(["mens", "ladies"]).default("mens"),
       })
     )
     .mutation(async ({ ctx, input }) => {

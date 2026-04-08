@@ -39,6 +39,7 @@ export default function Admin() {
   const [newSeasonName, setNewSeasonName] = useState("");
   const [newSeasonYear, setNewSeasonYear] = useState(2026);
   const [newSeasonQuarter, setNewSeasonQuarter] = useState<"spring" | "summer" | "autumn" | "winter">("spring");
+  const [newSeasonDivision, setNewSeasonDivision] = useState<"mens" | "ladies">("mens");
   const [newSeasonStart, setNewSeasonStart] = useState("");
   const [newSeasonEnd, setNewSeasonEnd] = useState("");
   const [newSeasonDeadline, setNewSeasonDeadline] = useState("");
@@ -581,6 +582,14 @@ export default function Admin() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                  <select value={newSeasonDivision} onChange={(e) => setNewSeasonDivision(e.target.value as "mens" | "ladies")}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
+                    <option value="mens">Men's</option>
+                    <option value="ladies">Ladies'</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Registration Deadline</label>
                   <input type="date" value={newSeasonDeadline} onChange={(e) => setNewSeasonDeadline(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
@@ -601,6 +610,7 @@ export default function Admin() {
                   name: newSeasonName,
                   year: newSeasonYear,
                   quarter: newSeasonQuarter,
+                  division: newSeasonDivision,
                   startDate: new Date(newSeasonStart),
                   endDate: new Date(newSeasonEnd),
                   registrationDeadline: new Date(newSeasonDeadline),
@@ -625,7 +635,16 @@ export default function Admin() {
                     <div key={s.id} className="px-6 py-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="font-medium text-gray-800">{s.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-800">{s.name}</p>
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                              (s as any).division === "ladies"
+                                ? "bg-pink-100 text-pink-700"
+                                : "bg-blue-100 text-blue-700"
+                            }`}>
+                              {(s as any).division === "ladies" ? "Ladies'" : "Men's"}
+                            </span>
+                          </div>
                           <p className="text-xs text-gray-400">
                             {new Date(s.startDate).toLocaleDateString("en-GB")} — {new Date(s.endDate).toLocaleDateString("en-GB")}
                           </p>

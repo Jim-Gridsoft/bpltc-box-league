@@ -72,8 +72,9 @@ function BoxCard({ boxId, name, level, expanded, onToggle }: {
 export default function Leaderboard() {
   const [showYear, setShowYear] = useState(false);
   const [expandedBox, setExpandedBox] = useState<number | null>(null);
+  const [division, setDivision] = useState<"mens" | "ladies">("mens");
 
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
   const { data: seasonLeaderboard, isLoading: loadingSeason } = trpc.tournament.seasonLeaderboard.useQuery(
     { seasonId: currentSeason?.id ?? 0 },
     { enabled: !!currentSeason, staleTime: 0 }
@@ -87,13 +88,34 @@ export default function Leaderboard() {
     { enabled: !!currentSeason, staleTime: 0 }
   );
 
+  const divisionLabel = division === "mens" ? "Men's" : "Ladies'";
+
   return (
     <div className="min-h-screen bg-[#faf6ee]">
       <TournamentNav />
       <div className="relative bg-[#1b4332] text-white py-14 px-4 text-center">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3">Standings</h1>
-          <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : "BPLTC Men's Doubles Box League 2026"}</p>
+          <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : `BPLTC ${divisionLabel} Doubles Box League ${CURRENT_YEAR}`}</p>
+          {/* Division toggle */}
+          <div className="flex gap-2 justify-center mt-5">
+            <button
+              onClick={() => setDivision("mens")}
+              className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                division === "mens" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+              }`}
+            >
+              Men's
+            </button>
+            <button
+              onClick={() => setDivision("ladies")}
+              className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                division === "ladies" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+              }`}
+            >
+              Ladies'
+            </button>
+          </div>
         </div>
       </div>
       <div className="max-w-4xl mx-auto px-4 py-10 space-y-10">

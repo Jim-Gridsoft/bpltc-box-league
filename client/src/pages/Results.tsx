@@ -308,9 +308,10 @@ function FixtureCard({ fixture: f, currentUserId, canEdit, onResultSubmitted }: 
 export default function Results() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [seasonId, setSeasonId] = useState<number | null>(null);
+  const [division, setDivision] = useState<"mens" | "ladies">("mens");
 
-  const { data: seasons } = trpc.tournament.seasons.useQuery();
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const { data: seasons } = trpc.tournament.seasons.useQuery({ division });
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
 
   const activeSeason = useMemo(() => {
     if (seasonId) return seasons?.find((s) => s.id === seasonId) ?? currentSeason;
@@ -417,8 +418,22 @@ export default function Results() {
 
       <div className="bg-[#1b4332] text-white py-10 px-4">
         <div className="max-w-4xl mx-auto">
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => { setDivision("mens"); setSeasonId(null); }}
+              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all ${
+                division === "mens" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+              }`}
+            >Men's</button>
+            <button
+              onClick={() => { setDivision("ladies"); setSeasonId(null); }}
+              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all ${
+                division === "ladies" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+              }`}
+            >Ladies'</button>
+          </div>
           <p className="text-green-300 text-sm mb-1">
-            {activeSeason?.name ?? "BPLTC Men's Doubles Box League"}
+            {activeSeason?.name ?? `BPLTC ${division === "mens" ? "Men's" : "Ladies'"} Doubles Box League`}
           </p>
           <h1 className="font-serif text-3xl font-bold">
             {boxName ? `${boxName} — Fixtures & Results` : "Box Fixtures & Results"}

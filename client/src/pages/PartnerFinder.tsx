@@ -55,7 +55,8 @@ export default function PartnerFinder() {
   const [requestMsg, setRequestMsg] = useState("");
 
   // Queries
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery();
+  const [division, setDivision] = useState<"mens" | "ladies">("mens");
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
   const { data: myEntry } = trpc.tournament.myEntry.useQuery(
     { seasonId: currentSeason?.id ?? 0 },
     { enabled: isAuthenticated && !!currentSeason }
@@ -181,8 +182,28 @@ export default function PartnerFinder() {
       <div className="py-10 border-b"
         style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.1)" }}>
         <div className="container">
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => setDivision("mens")}
+              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all`}
+              style={{
+                background: division === "mens" ? "var(--gold)" : "rgba(255,255,255,0.1)",
+                color: division === "mens" ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
+                fontFamily: "'Space Grotesk', sans-serif",
+              }}
+            >Men's</button>
+            <button
+              onClick={() => setDivision("ladies")}
+              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all`}
+              style={{
+                background: division === "ladies" ? "var(--gold)" : "rgba(255,255,255,0.1)",
+                color: division === "ladies" ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
+                fontFamily: "'Space Grotesk', sans-serif",
+              }}
+            >Ladies'</button>
+          </div>
           <span className="label-tag" style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}>
-            Find a Playing Partner
+            {division === "mens" ? "Men's" : "Ladies'"} — Find a Playing Partner
           </span>
           <h1 className="text-4xl font-bold mt-1"
             style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--cream)" }}>

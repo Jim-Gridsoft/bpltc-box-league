@@ -24,9 +24,12 @@ import {
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
-export async function getAllSeasons() {
+export async function getAllSeasons(division?: "mens" | "ladies") {
   const db = await getDb();
   if (!db) return [];
+  if (division) {
+    return db.select().from(seasons).where(eq(seasons.division, division)).orderBy(desc(seasons.startDate));
+  }
   return db.select().from(seasons).orderBy(desc(seasons.startDate));
 }
 
@@ -41,13 +44,14 @@ export async function getActiveSeason() {
   return rows[0];
 }
 
-export async function getOpenSeason() {
+export async function getOpenSeason(division?: "mens" | "ladies") {
   const db = await getDb();
   if (!db) return undefined;
-  // Returns a season that is open for registration OR active
+  // Returns a season that is open for registration OR active for the given division
   const rows = await db
     .select()
     .from(seasons)
+    .where(division ? eq(seasons.division, division) : undefined)
     .orderBy(asc(seasons.startDate))
     .limit(10);
   return rows.find((s) => s.status === "registration" || s.status === "active");

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS `seasons` (
   `endDate` timestamp NOT NULL,
   `registrationDeadline` timestamp NOT NULL,
   `status` enum('upcoming','registration','active','completed') NOT NULL DEFAULT 'upcoming',
+  `division` enum('mens','ladies') NOT NULL DEFAULT 'mens',
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `seasons_id` PRIMARY KEY(`id`)
 );
