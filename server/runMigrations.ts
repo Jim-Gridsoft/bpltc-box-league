@@ -1,8 +1,14 @@
 /**
- * Lightweight migration runner for Heroku.
- * Applies any pending schema changes by running raw SQL migration files
- * in the /drizzle directory in alphabetical order.
- * Tracks applied migrations in a `_migrations` table.
+ * Migration runner for Heroku/production deployments.
+ *
+ * Strategy:
+ * - 0000_full_schema.sql: Complete schema for fresh databases (CREATE TABLE IF NOT EXISTS)
+ * - 0001_* through 0008_*: Legacy incremental migrations from Manus era — skipped on fresh
+ *   databases because 0000_full_schema.sql already includes all their changes.
+ * - 0009_add_password_hash.sql and later: New incremental migrations applied after full schema.
+ *
+ * The runner tracks applied migrations in a `_migrations` table.
+ * All SQL files use IF NOT EXISTS / IF EXISTS guards where possible, making them idempotent.
  */
 import { getDb } from "./db";
 import { sql } from "drizzle-orm";
@@ -10,6 +16,21 @@ import fs from "fs";
 import path from "path";
 
 const MIGRATIONS_TABLE = "_migrations";
+
+// Legacy incremental files that are fully superseded by 0000_full_schema.sql
+// These are skipped on fresh databases but marked as applied so they don't run later.
+const LEGACY_MIGRATIONS = new Set([
+  "0000_greedy_nightmare.sql",
+  "0001_far_war_machine.sql",
+  "0002_sad_the_captain.sql",
+  "0003_seasonal_box_league.sql",
+  "0004_add_fixtures.sql",
+  "0004_mushy_tyrannus.sql",
+  "0005_tiny_talos.sql",
+  "0006_flowery_stone_men.sql",
+  "0007_pretty_warlock.sql",
+  "0008_faithful_invisible_woman.sql",
+]);
 
 async function ensureMigrationsTable() {
   const db = await getDb();
@@ -35,21 +56,28 @@ async function getAppliedMigrations(): Promise<Set<string>> {
   return applied;
 }
 
+async function markApplied(filename: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(
+    sql.raw(`INSERT IGNORE INTO \`${MIGRATIONS_TABLE}\` (filename) VALUES ('${filename}')`)
+  );
+}
+
 async function applyMigration(filename: string, sqlContent: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  // Split on semicolons to handle multi-statement migrations
+
+  // Split on Drizzle's statement-breakpoint marker and semicolons
   const statements = sqlContent
-    .split(";")
+    .split(/;|-->\s*statement-breakpoint/)
     .map((s) => s.trim())
     .filter((s) => s.length > 0 && !s.startsWith("--"));
 
   for (const statement of statements) {
     await db.execute(sql.raw(statement));
   }
-  await db.execute(
-    sql.raw(`INSERT INTO \`${MIGRATIONS_TABLE}\` (filename) VALUES ('${filename}')`)
-  );
+  await markApplied(filename);
   console.log(`[Migration] Applied: ${filename}`);
 }
 
@@ -61,7 +89,6 @@ export async function runMigrations() {
   }
 
   // Resolve migrations directory relative to the project root
-  // In production (dist/index.js), __dirname is dist/, so go up one level
   const possibleDirs = [
     path.resolve(process.cwd(), "drizzle"),
     path.resolve(import.meta.dirname, "..", "drizzle"),
@@ -86,23 +113,32 @@ export async function runMigrations() {
     if (applied.has(file)) {
       continue; // Already applied
     }
+
+    // If the full schema has been applied, skip legacy incremental migrations
+    if (LEGACY_MIGRATIONS.has(file) && applied.has("0000_full_schema.sql")) {
+      console.log(`[Migration] Skipping legacy migration (covered by full schema): ${file}`);
+      await markApplied(file);
+      continue;
+    }
+
     const content = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
     try {
       await applyMigration(file, content);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Ignore "column already exists" errors (idempotent)
-      if (msg.includes("Duplicate column") || msg.includes("already exists")) {
+      // Ignore "already exists" errors — migrations use IF NOT EXISTS where possible
+      if (
+        msg.includes("Duplicate column") ||
+        msg.includes("already exists") ||
+        msg.includes("ER_DUP_FIELDNAME") ||
+        msg.includes("ER_TABLE_EXISTS_ERROR")
+      ) {
         console.log(`[Migration] Skipping ${file} (already applied at DB level)`);
-        const dbInner = await getDb();
-        if (dbInner) {
-          await dbInner.execute(
-            sql.raw(`INSERT IGNORE INTO \`${MIGRATIONS_TABLE}\` (filename) VALUES ('${file}')`)
-          );
-        }
+        await markApplied(file);
       } else {
         console.error(`[Migration] Failed to apply ${file}:`, msg);
-        throw err;
+        // Non-fatal: log and continue so the app still starts
+        console.warn(`[Migration] Continuing despite error in ${file}`);
       }
     }
   }
