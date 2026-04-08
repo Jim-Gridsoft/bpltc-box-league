@@ -79,7 +79,7 @@ async function startServer() {
           }
           await notifyOwner({
             title: `New tournament entry: ${customerName}`,
-            content: `**${customerName}** (${customerEmail ?? "no email"}) has paid the £20 entry fee and joined the BPLTC Men's Doubles Ladder 2026.\n\nEntrant ID: ${entrantId}`,
+            content: `**${customerName}** (${customerEmail ?? "no email"}) has paid the £10 entry fee and joined the BPLTC Men's Doubles Ladder 2026.\n\nEntrant ID: ${entrantId}`,
           });
         } catch (e) {
           console.error("[Webhook] Failed to mark entrant paid:", e);

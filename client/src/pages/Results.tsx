@@ -368,7 +368,7 @@ export default function Results() {
         <div className="max-w-md mx-auto px-4 py-24 text-center">
           <Trophy className="w-16 h-16 mx-auto mb-6 text-[#c9a84c]" />
           <h1 className="font-serif text-3xl font-bold text-[#1b4332] mb-4">Payment Required</h1>
-          <p className="text-gray-600 mb-8">Please complete your £20 entry payment to access match result entry.</p>
+          <p className="text-gray-600 mb-8">Please complete your £10 entry payment to access match result entry.</p>
           <a href="/dashboard" className="inline-block bg-[#1b4332] text-white px-8 py-3 rounded-full font-semibold hover:bg-[#2d6a4f] transition-colors">
             Go to Dashboard to Pay
           </a>

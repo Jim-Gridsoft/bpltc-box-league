@@ -122,7 +122,7 @@ export const tournamentRouter = router({
       });
     }),
 
-  /** Create a Stripe checkout session for the £20 entry fee */
+  /** Create a Stripe checkout session for the £10 entry fee */
   createCheckout: protectedProcedure
     .input(z.object({ seasonId: z.number() }))
     .mutation(async ({ ctx, input }) => {

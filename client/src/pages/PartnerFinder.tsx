@@ -160,7 +160,7 @@ export default function PartnerFinder() {
             Paid Entrants Only
           </h2>
           <p className="mb-6" style={{ color: "var(--charcoal-mid)" }}>
-            The Partner Finder is available to paid box league entrants. Register for the current season and pay your £20 entry fee to access it.
+            The Partner Finder is available to paid box league entrants. Register for the current season and pay your £10 entry fee to access it.
           </p>
           <Button size="lg" onClick={() => window.location.href = "/dashboard"}
             style={{ background: "var(--green-deep)", color: "var(--cream)" }}>

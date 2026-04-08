@@ -501,7 +501,7 @@ export default function Dashboard() {
                 className="w-full bg-[#1b4332] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {registerMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                Register for this Season — £20
+                Register for this Season — £10
               </button>
               {user?.role === "admin" && (
                 <div className="mt-3 pt-3 border-t border-dashed border-amber-200">
@@ -540,7 +540,7 @@ export default function Dashboard() {
             </div>
             <p className="text-gray-600 text-sm mb-5">
               You are registered as <strong>{myEntry.displayName}</strong> for{" "}
-              {activeSeason?.name}. Pay the £20 entry fee to confirm your place in the box league.
+              {activeSeason?.name}. Pay the £10 entry fee to confirm your place in the box league.
             </p>
             <button
               onClick={() =>
@@ -550,7 +550,7 @@ export default function Dashboard() {
               className="bg-[#c9a84c] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#b8963d] transition-colors disabled:opacity-50 flex items-center gap-2"
             >
               {checkoutMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-              Pay £20 Entry Fee <ChevronRight className="w-4 h-4" />
+              Pay £10 Entry Fee <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         ) : (

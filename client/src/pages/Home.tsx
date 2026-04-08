@@ -45,7 +45,7 @@ const HOW_IT_WORKS = [
   {
     icon: CreditCard,
     title: "Register & Pay",
-    body: "Sign in, enter your display name and ability rating, then pay the £20 seasonal entry fee. Your place in the box league is confirmed instantly.",
+    body: "Sign in, enter your display name and ability rating, then pay the £10 seasonal entry fee. Your place in the box league is confirmed instantly.",
   },
   {
     icon: Users,
@@ -75,7 +75,7 @@ const HOW_IT_WORKS = [
 ];
 
 const RULES = [
-  "Entry fee is £20 per player per season.",
+  "Entry fee is £10 per player per season.",
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
   "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
@@ -192,7 +192,7 @@ export default function Home() {
               style={{ color: "rgba(250,246,238,0.85)", fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300 }}
             >
               Ability-matched boxes. Maximally varied partners. Promotion and relegation.
-              Compete for the title — and earn points for every match you play. Entry is just £20 per season.
+              Compete for the title — and earn points for every match you play. Entry is just £10 per season.
             </p>
             <div className="flex flex-wrap gap-3">
               {isAuthenticated ? (
@@ -212,7 +212,7 @@ export default function Home() {
                   style={{ background: "var(--gold)", color: "var(--green-deep)", fontWeight: 600 }}
                 >
                   <CreditCard size={16} className="mr-2" />
-                  Register & Enter — £20
+                  Register & Enter — £10
                 </Button>
               )}
               <Link href="/leaderboard">
@@ -237,7 +237,7 @@ export default function Home() {
       >
         <div className="container grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
           {[
-            { value: "£20", label: "Entry Per Season" },
+            { value: "£10", label: "Entry Per Season" },
             { value: "2 pts", label: "For a Win" },
             { value: "1 pt", label: "For Winning a Set" },
             { value: "0 pts", label: "For Losing 2-0" },
@@ -481,7 +481,7 @@ export default function Home() {
             Ready to Enter?
           </h2>
           <p className="text-lg mb-8 max-w-lg mx-auto" style={{ color: "var(--charcoal-mid)" }}>
-            Sign in, register your name and ability rating, and pay the £20 seasonal entry fee to secure
+            Sign in, register your name and ability rating, and pay the £10 seasonal entry fee to secure
             your place in the{currentSeasonName ? ` ${currentSeasonName}` : ""} box league.
           </p>
           {isAuthenticated ? (
@@ -501,7 +501,7 @@ export default function Home() {
               style={{ background: "var(--green-deep)", color: "var(--cream)", fontWeight: 600 }}
             >
               <CreditCard size={16} className="mr-2" />
-              Sign In & Register — £20
+              Sign In & Register — £10
             </Button>
           )}
         </div>
