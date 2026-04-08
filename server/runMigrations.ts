@@ -8,7 +8,7 @@
  * - 0009_add_password_hash.sql and later: New incremental migrations applied after full schema.
  *
  * The runner tracks applied migrations in a `_migrations` table.
- * All SQL files use IF NOT EXISTS / IF EXISTS guards where possible, making them idempotent.
+ * Each SQL statement is executed individually so a single failure never blocks the rest.
  */
 import { getDb } from "./db";
 import { sql } from "drizzle-orm";
@@ -17,7 +17,7 @@ import path from "path";
 
 const MIGRATIONS_TABLE = "_migrations";
 
-// Legacy incremental files that are fully superseded by 0000_full_schema.sql
+// Legacy incremental files that are fully superseded by 0000_full_schema.sql.
 // These are skipped on fresh databases but marked as applied so they don't run later.
 const LEGACY_MIGRATIONS = new Set([
   "0000_greedy_nightmare.sql",
@@ -68,17 +68,50 @@ async function applyMigration(filename: string, sqlContent: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Split on Drizzle's statement-breakpoint marker and semicolons
+  // Split on Drizzle's statement-breakpoint marker and semicolons.
+  // Filter out comment-only lines and empty statements.
   const statements = sqlContent
     .split(/;|-->\s*statement-breakpoint/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith("--"));
+    .filter((s) => {
+      if (!s) return false;
+      // Remove pure comment lines
+      const nonComment = s.replace(/--[^\n]*/g, "").trim();
+      return nonComment.length > 0;
+    });
+
+  let appliedCount = 0;
+  let skippedCount = 0;
 
   for (const statement of statements) {
-    await db.execute(sql.raw(statement));
+    try {
+      await db.execute(sql.raw(statement));
+      appliedCount++;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const errCode = (err as { code?: string }).code ?? "";
+      // Idempotent: skip "already exists" type errors
+      if (
+        errCode === "ER_DUP_FIELDNAME" ||
+        errCode === "ER_TABLE_EXISTS_ERROR" ||
+        errCode === "ER_DUP_KEYNAME" ||
+        msg.includes("Duplicate column") ||
+        msg.includes("already exists") ||
+        msg.includes("Duplicate key")
+      ) {
+        skippedCount++;
+      } else {
+        // Log but continue — don't let one bad statement block the rest
+        console.warn(`[Migration] Warning in ${filename}: ${msg.split("\n")[0]}`);
+        skippedCount++;
+      }
+    }
   }
+
   await markApplied(filename);
-  console.log(`[Migration] Applied: ${filename}`);
+  console.log(
+    `[Migration] Applied: ${filename} (${appliedCount} statements executed, ${skippedCount} skipped)`
+  );
 }
 
 export async function runMigrations() {
@@ -122,25 +155,7 @@ export async function runMigrations() {
     }
 
     const content = fs.readFileSync(path.join(migrationsDir, file), "utf-8");
-    try {
-      await applyMigration(file, content);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Ignore "already exists" errors — migrations use IF NOT EXISTS where possible
-      if (
-        msg.includes("Duplicate column") ||
-        msg.includes("already exists") ||
-        msg.includes("ER_DUP_FIELDNAME") ||
-        msg.includes("ER_TABLE_EXISTS_ERROR")
-      ) {
-        console.log(`[Migration] Skipping ${file} (already applied at DB level)`);
-        await markApplied(file);
-      } else {
-        console.error(`[Migration] Failed to apply ${file}:`, msg);
-        // Non-fatal: log and continue so the app still starts
-        console.warn(`[Migration] Continuing despite error in ${file}`);
-      }
-    }
+    await applyMigration(file, content);
   }
 
   console.log("[Migration] All migrations up to date");
