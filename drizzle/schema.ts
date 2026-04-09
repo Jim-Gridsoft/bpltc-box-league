@@ -80,6 +80,8 @@ export const yearPoints = mysqlTable("year_points", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   year: int("year").notNull(),
+  /** Which competition division these points belong to */
+  division: mysqlEnum("division", ["mens", "ladies"]).default("mens").notNull(),
   totalPoints: int("totalPoints").default(0).notNull(),
   totalMatchesPlayed: int("totalMatchesPlayed").default(0).notNull(),
   totalMatchesWon: int("totalMatchesWon").default(0).notNull(),

@@ -185,9 +185,9 @@ export const tournamentRouter = router({
 
   /** Year-long accumulator leaderboard */
   yearLeaderboard: publicProcedure
-    .input(z.object({ year: z.number() }))
+    .input(z.object({ year: z.number(), division: z.enum(["mens", "ladies"]).optional() }))
     .query(async ({ input }) => {
-      return getYearLeaderboard(input.year);
+      return getYearLeaderboard(input.year, input.division ?? "mens");
     }),
 
   // ── Boxes ────────────────────────────────────────────────────────────────────

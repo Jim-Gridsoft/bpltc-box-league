@@ -213,7 +213,7 @@ export async function getAllSeasonEntrants(seasonId: number) {
 
 // ── Year Points ───────────────────────────────────────────────────────────────
 
-export async function getYearLeaderboard(year: number) {
+export async function getYearLeaderboard(year: number, division: "mens" | "ladies" = "mens") {
   const db = await getDb();
   if (!db) return [];
   return db
@@ -221,6 +221,7 @@ export async function getYearLeaderboard(year: number) {
       id: yearPoints.id,
       userId: yearPoints.userId,
       year: yearPoints.year,
+      division: yearPoints.division,
       totalPoints: yearPoints.totalPoints,
       totalMatchesPlayed: yearPoints.totalMatchesPlayed,
       totalMatchesWon: yearPoints.totalMatchesWon,
@@ -229,7 +230,7 @@ export async function getYearLeaderboard(year: number) {
     })
     .from(yearPoints)
     .leftJoin(users, eq(yearPoints.userId, users.id))
-    .where(eq(yearPoints.year, year))
+    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)))
     .orderBy(desc(yearPoints.totalPoints));
 }
 
@@ -237,14 +238,15 @@ export async function upsertYearPoints(
   userId: number,
   year: number,
   pointsDelta: number,
-  won: boolean
+  won: boolean,
+  division: "mens" | "ladies" = "mens"
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const existing = await db
     .select()
     .from(yearPoints)
-    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year)))
+    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, division)))
     .limit(1);
 
   if (existing[0]) {
@@ -260,6 +262,7 @@ export async function upsertYearPoints(
     await db.insert(yearPoints).values({
       userId,
       year,
+      division,
       totalPoints: pointsDelta,
       totalMatchesPlayed: 1,
       totalMatchesWon: won ? 1 : 0,
@@ -459,6 +462,10 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const teamAWon = data.winner === "A";
   const year = data.playedAt.getFullYear();
 
+  // Look up the season's division so year_points are stored per-division
+  const seasonRow = await db.select({ division: seasons.division }).from(seasons).where(eq(seasons.id, data.seasonId)).limit(1);
+  const seasonDivision: "mens" | "ladies" = seasonRow[0]?.division ?? "mens";
+
   // Parse the score string (e.g. "6-3 4-6 6-5") to count sets won by each team
   function countSetsWon(score: string | null): { teamA: number; teamB: number } {
     if (!score) return { teamA: 0, teamB: 0 };
@@ -494,7 +501,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesWon: entrant[0].matchesWon + (teamAWon ? 1 : 0),
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, teamAWon);
+      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision);
     }
   }
 
@@ -514,7 +521,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesWon: entrant[0].matchesWon + (teamAWon ? 0 : 1),
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon);
+      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision);
     }
   }
 
@@ -1814,6 +1821,7 @@ export async function removePlayerFromSeason(
     .where(eq(seasons.id, seasonId))
     .limit(1);
   const year = seasonRows[0]?.year ?? new Date().getFullYear();
+  const removeDivision: "mens" | "ladies" = seasonRows[0]?.division ?? "mens";
 
   for (const m of playerMatches) {
     const otherPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter(
@@ -1846,7 +1854,7 @@ export async function removePlayerFromSeason(
     const existingYP = await db
       .select()
       .from(yearPoints)
-      .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year)))
+      .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, removeDivision)))
       .limit(1);
     if (existingYP[0]) {
       await db

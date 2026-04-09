@@ -80,7 +80,7 @@ export default function Leaderboard() {
     { enabled: !!currentSeason, staleTime: 0 }
   );
   const { data: yearLeaderboard, isLoading: loadingYear } = trpc.tournament.yearLeaderboard.useQuery(
-    { year: CURRENT_YEAR },
+    { year: CURRENT_YEAR, division },
     { enabled: showYear, staleTime: 0 }
   );
   const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
