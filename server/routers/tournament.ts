@@ -53,6 +53,7 @@ import {
   updateContactPreferences,
   updateBoxWhatsappLink,
   resetYearAccumulator,
+  updateEntrantAbilityRating,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -892,6 +893,25 @@ export const tournamentRouter = router({
   /**
    * Update the current user's contact sharing preferences for a season entrant record.
    */
+  /**
+   * Admin: manually override a season entrant's ability rating (1–5).
+   * This affects their seeding in the next box draw.
+   */
+  adminSetAbilityRating: protectedProcedure
+    .input(
+      z.object({
+        entrantId: z.number(),
+        abilityRating: z.number().int().min(1).max(5),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Admin only." });
+      const entrant = await getSeasonEntrantById(input.entrantId);
+      if (!entrant) throw new TRPCError({ code: "NOT_FOUND", message: "Entrant not found." });
+      await updateEntrantAbilityRating(input.entrantId, input.abilityRating);
+      return { success: true };
+    }),
+
   updateContactPreferences: protectedProcedure
     .input(
       z.object({

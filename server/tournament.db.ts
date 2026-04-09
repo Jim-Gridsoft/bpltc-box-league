@@ -2273,3 +2273,12 @@ export async function resetYearAccumulator(year: number, division: "mens" | "lad
 
   return existing.length;
 }
+
+export async function updateEntrantAbilityRating(entrantId: number, abilityRating: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(seasonEntrants)
+    .set({ abilityRating })
+    .where(eq(seasonEntrants.id, entrantId));
+}

@@ -216,6 +216,17 @@ export default function Admin() {
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
+  // Ability rating override state: entrantId -> draft rating value
+  const [abilityDrafts, setAbilityDrafts] = useState<Record<number, number>>({});
+  const setAbilityRatingMutation = trpc.tournament.adminSetAbilityRating.useMutation({
+    onSuccess: (_data, variables) => {
+      toast.success(`Ability rating updated to ${variables.abilityRating}/5.`);
+      utils.tournament.adminSeasonEntrants.invalidate();
+      utils.tournament.seasonBoxes.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
   if (authLoading) return (
     <div className="min-h-screen bg-[#faf6ee] flex items-center justify-center">
       <Loader2 className="w-8 h-8 animate-spin text-[#1b4332]" />
@@ -334,6 +345,35 @@ export default function Admin() {
                             <p><strong>Entrant ID:</strong> {e.id}</p>
                             <p><strong>Matches Won:</strong> {e.matchesWon}</p>
                             {e.stripePaymentIntentId && <p><strong>Stripe PI:</strong> {e.stripePaymentIntentId}</p>}
+                          </div>
+                          {/* Ability Rating Override */}
+                          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                            <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">Ability Rating:</span>
+                            <div className="flex gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <button
+                                  key={star}
+                                  onClick={(ev) => { ev.stopPropagation(); setAbilityDrafts((prev) => ({ ...prev, [e.id]: star })); }}
+                                  className={`w-7 h-7 rounded text-sm font-bold transition-colors ${
+                                    (abilityDrafts[e.id] ?? e.abilityRating) >= star
+                                      ? "bg-[#c9a84c] text-white"
+                                      : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                                  }`}>
+                                  {star}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                const rating = abilityDrafts[e.id] ?? e.abilityRating;
+                                setAbilityRatingMutation.mutate({ entrantId: e.id, abilityRating: rating });
+                              }}
+                              disabled={setAbilityRatingMutation.isPending || (abilityDrafts[e.id] === undefined || abilityDrafts[e.id] === e.abilityRating)}
+                              className="bg-[#1b4332] text-white px-3 py-1 rounded text-xs font-semibold hover:bg-[#163728] transition-colors disabled:opacity-40 flex items-center gap-1">
+                              {setAbilityRatingMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+                              Save
+                            </button>
                           </div>
                           <div className="ml-auto flex items-center gap-2 flex-wrap">
                             {!e.paid && (
