@@ -63,6 +63,8 @@ export const seasonEntrants = mysqlTable("season_entrants", {
   seasonPoints: int("seasonPoints").default(0).notNull(),
   matchesPlayed: int("matchesPlayed").default(0).notNull(),
   matchesWon: int("matchesWon").default(0).notNull(),
+  /** Total individual games won across all matches this season */
+  gamesWon: int("gamesWon").default(0).notNull(),
   /** Optional phone number provided at registration */
   phoneNumber: varchar("phoneNumber", { length: 32 }),
   /** Whether the player consents to sharing their phone number and email with box-mates */

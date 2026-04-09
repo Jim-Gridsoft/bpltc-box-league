@@ -576,11 +576,8 @@ export default function Dashboard() {
                   icon: <Trophy className="w-5 h-5 text-green-600" />,
                 },
                 {
-                  label: "Win Rate",
-                  value:
-                    myEntry.matchesPlayed > 0
-                      ? `${Math.round((myEntry.matchesWon / myEntry.matchesPlayed) * 100)}%`
-                      : "—",
+                  label: "Games Won",
+                  value: myEntry.gamesWon ?? 0,
                   icon: <CheckCircle2 className="w-5 h-5 text-purple-500" />,
                 },
               ].map((stat) => (
@@ -638,7 +635,7 @@ export default function Dashboard() {
                         <div className="text-right">
                           <span className="font-bold text-[#1b4332]">{m.seasonPoints} pts</span>
                           <span className="text-xs text-gray-400 ml-2">
-                            {m.matchesPlayed}P {m.matchesWon}W
+                            {m.matchesPlayed}P {m.matchesWon}W {m.gamesWon ?? 0}GW
                           </span>
                         </div>
                       </div>
