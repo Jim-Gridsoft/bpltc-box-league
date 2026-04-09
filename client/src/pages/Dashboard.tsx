@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import TournamentNav from "@/components/TournamentNav";
@@ -352,6 +352,29 @@ export default function Dashboard() {
     },
     onError: (e) => toast.error(e.message),
   });
+
+  // ── Handle return from Stripe Checkout ────────────────────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get("payment");
+    if (paymentStatus === "success") {
+      toast.success("Payment received! Your registration is confirmed.");
+      // Poll for paid status — webhook may take a few seconds to fire
+      let attempts = 0;
+      const interval = setInterval(() => {
+        utils.tournament.myEntry.invalidate();
+        attempts++;
+        if (attempts >= 10) clearInterval(interval); // stop after ~20s
+      }, 2000);
+      // Clean the URL so refreshing doesn't re-trigger
+      window.history.replaceState({}, "", window.location.pathname);
+      return () => clearInterval(interval);
+    } else if (paymentStatus === "cancelled") {
+      toast.info("Payment was cancelled. You can try again when ready.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (authLoading)
     return (
