@@ -163,3 +163,26 @@ export async function getAdminEmails() {
     .where(eq(users.role, "admin"));
   return admins.filter((a) => !!a.email) as { email: string; name: string | null }[];
 }
+
+export async function updateUserProfile(userId: number, data: { name?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updateSet: Record<string, unknown> = {};
+  if (data.name !== undefined) updateSet.name = data.name;
+  if (data.email !== undefined) updateSet.email = data.email;
+  if (Object.keys(updateSet).length === 0) return;
+  await db.update(users).set(updateSet).where(eq(users.id, userId));
+}
+
+export async function getUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function updateUserPasswordHash(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+}

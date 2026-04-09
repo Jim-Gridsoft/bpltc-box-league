@@ -1,7 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
-import { Trophy, LayoutDashboard, Home, LogOut, LogIn, ShieldCheck, ClipboardList, MessageSquare } from "lucide-react";
+import { Trophy, LayoutDashboard, Home, LogOut, LogIn, ShieldCheck, ClipboardList, MessageSquare, Settings } from "lucide-react";
 
 export default function TournamentNav() {
   const { user, isAuthenticated, logout } = useAuth();
@@ -13,6 +13,7 @@ export default function TournamentNav() {
     ...(isAuthenticated ? [{ href: "/dashboard", label: "My Dashboard", icon: LayoutDashboard }] : []),
     ...(isAuthenticated ? [{ href: "/results", label: "My Results", icon: ClipboardList }] : []),
     ...(isAuthenticated ? [{ href: "/contact-admin", label: "Contact Admin", icon: MessageSquare }] : []),
+    ...(isAuthenticated ? [{ href: "/settings", label: "Settings", icon: Settings }] : []),
     ...(isAuthenticated && user?.role === "admin" ? [{ href: "/admin", label: "Admin", icon: ShieldCheck }] : []),
   ];
 

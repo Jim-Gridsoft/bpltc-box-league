@@ -3,7 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { tournamentRouter } from "./routers/tournament";
-import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus } from "./db";
+import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus, updateUserProfile, getUserById, updateUserPasswordHash } from "./db";
 import { notifyOwner } from "./_core/notification";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import {
   getUserByEmail,
   createUserWithPassword,
   verifyPassword,
+  hashPassword,
   createEmailSessionToken,
 } from "./_core/emailAuth";
 
@@ -71,6 +72,45 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+
+    /** Update the current user's display name and/or email */
+    updateProfile: protectedProcedure
+      .input(z.object({
+        name: z.string().min(2).max(128).optional(),
+        email: z.string().email().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (!input.name && !input.email) return { success: true };
+        // If changing email, ensure it is not already taken by another account
+        if (input.email && input.email !== ctx.user.email) {
+          const existing = await getUserByEmail(input.email);
+          if (existing && existing.id !== ctx.user.id) {
+            throw new TRPCError({ code: "CONFLICT", message: "That email address is already in use by another account." });
+          }
+        }
+        await updateUserProfile(ctx.user.id, { name: input.name, email: input.email });
+        return { success: true };
+      }),
+
+    /** Change the current user's password (requires current password for verification) */
+    changePassword: protectedProcedure
+      .input(z.object({
+        currentPassword: z.string().min(1),
+        newPassword: z.string().min(8).max(128),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const user = await getUserById(ctx.user.id);
+        if (!user || !user.passwordHash) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Password change is not available for this account type." });
+        }
+        const valid = await verifyPassword(input.currentPassword, user.passwordHash);
+        if (!valid) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Current password is incorrect." });
+        }
+        const newHash = await hashPassword(input.newPassword);
+        await updateUserPasswordHash(ctx.user.id, newHash);
+        return { success: true };
+      }),
   }),
 
   tournament: tournamentRouter,

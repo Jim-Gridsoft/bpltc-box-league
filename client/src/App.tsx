@@ -11,6 +11,7 @@ import Admin from "./pages/Admin";
 import Results from "./pages/Results";
 import ContactAdmin from "./pages/ContactAdmin";
 import Login from "./pages/Login";
+import Settings from "./pages/Settings";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
@@ -23,6 +24,7 @@ function Router() {
       <Route path="/results" component={Results} />
       <Route path="/contact-admin" component={ContactAdmin} />
       <Route path="/login" component={Login} />
+      <Route path="/settings" component={Settings} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
