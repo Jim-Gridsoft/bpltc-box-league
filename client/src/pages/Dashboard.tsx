@@ -576,8 +576,8 @@ export default function Dashboard() {
                   icon: <Trophy className="w-5 h-5 text-green-600" />,
                 },
                 {
-                  label: "Games Won",
-                  value: myEntry.gamesWon ?? 0,
+                  label: "Games Diff",
+                  value: (() => { const d = (myEntry.gamesWon ?? 0) - (myEntry.gamesLost ?? 0); return d > 0 ? `+${d}` : `${d}`; })(),
                   icon: <CheckCircle2 className="w-5 h-5 text-purple-500" />,
                 },
               ].map((stat) => (
@@ -635,7 +635,7 @@ export default function Dashboard() {
                         <div className="text-right">
                           <span className="font-bold text-[#1b4332]">{m.seasonPoints} pts</span>
                           <span className="text-xs text-gray-400 ml-2">
-                            {m.matchesPlayed}P {m.matchesWon}W {m.gamesWon ?? 0}GW
+                            {m.matchesPlayed}P {m.matchesWon}W {(() => { const d = (m.gamesWon ?? 0) - (m.gamesLost ?? 0); return (d > 0 ? '+' : '') + d; })()}GD
                           </span>
                         </div>
                       </div>

@@ -285,6 +285,7 @@ export async function getAllSeasonEntrants(seasonId: number) {
       matchesPlayed: seasonEntrants.matchesPlayed,
       matchesWon: seasonEntrants.matchesWon,
       gamesWon: seasonEntrants.gamesWon,
+      gamesLost: seasonEntrants.gamesLost,
       stripePaymentIntentId: seasonEntrants.stripePaymentIntentId,
       phoneNumber: seasonEntrants.phoneNumber,
       shareContact: seasonEntrants.shareContact,
@@ -394,6 +395,7 @@ export async function getBoxWithMembers(boxId: number) {
       matchesPlayed: seasonEntrants.matchesPlayed,
       matchesWon: seasonEntrants.matchesWon,
       gamesWon: seasonEntrants.gamesWon,
+      gamesLost: seasonEntrants.gamesLost,
       abilityRating: seasonEntrants.abilityRating,
       userId: seasonEntrants.userId,
     })
@@ -590,6 +592,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesPlayed: entrant[0].matchesPlayed + 1,
           matchesWon: entrant[0].matchesWon + (teamAWon ? 1 : 0),
           gamesWon: entrant[0].gamesWon + scoreStats.gamesA,
+          gamesLost: entrant[0].gamesLost + scoreStats.gamesB,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
       await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision);
@@ -611,6 +614,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           matchesPlayed: entrant[0].matchesPlayed + 1,
           matchesWon: entrant[0].matchesWon + (teamAWon ? 0 : 1),
           gamesWon: entrant[0].gamesWon + scoreStats.gamesB,
+          gamesLost: entrant[0].gamesLost + scoreStats.gamesA,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
       await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision);
@@ -673,10 +677,11 @@ export async function deleteMatch(matchId: number) {
     let pts = 0;
     let won = 0;
     let gw = 0;
+    let gl = 0;
     for (const um of userMatches) {
       const onTeamA = um.player1Id === userId || um.partner1Id === userId;
       const userWon = (onTeamA && um.winner === "A") || (!onTeamA && um.winner === "B");
-      // Count games won by this user's team
+      // Count games won and lost by this user's team
       if (um.score) {
         for (const set of um.score.trim().split(/\s+/)) {
           const parts = set.split("-");
@@ -685,6 +690,7 @@ export async function deleteMatch(matchId: number) {
           const g1 = parseInt(parts[1], 10);
           if (isNaN(g0) || isNaN(g1)) continue;
           gw += onTeamA ? g0 : g1;
+          gl += onTeamA ? g1 : g0;
         }
       }
       if (userWon) {
@@ -711,7 +717,7 @@ export async function deleteMatch(matchId: number) {
 
     await db
       .update(seasonEntrants)
-      .set({ seasonPoints: pts, matchesPlayed: userMatches.length, matchesWon: won, gamesWon: gw })
+      .set({ seasonPoints: pts, matchesPlayed: userMatches.length, matchesWon: won, gamesWon: gw, gamesLost: gl })
       .where(eq(seasonEntrants.id, entrant[0].id));
   }
 }
@@ -1502,13 +1508,14 @@ export async function endSeason(seasonId: number): Promise<{
         matchesWon: seasonEntrants.matchesWon,
         matchesPlayed: seasonEntrants.matchesPlayed,
         gamesWon: seasonEntrants.gamesWon,
+        gamesLost: seasonEntrants.gamesLost,
         abilityRating: seasonEntrants.abilityRating,
       })
       .from(boxMembers)
       .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
       .where(eq(boxMembers.boxId, box.id));
 
-    // Sort by: seasonPoints desc, matchesWon desc, gamesWon desc, matchesPlayed asc
+    // Sort by: seasonPoints desc, matchesWon desc, gamesDiff desc, matchesPlayed asc
     const ranked = members
       .filter((m) => m.userId !== null)
       .sort((a, b) => {
@@ -1516,13 +1523,13 @@ export async function endSeason(seasonId: number): Promise<{
         const bPts = b.seasonPoints ?? 0;
         const aWon = a.matchesWon ?? 0;
         const bWon = b.matchesWon ?? 0;
-        const aGW = a.gamesWon ?? 0;
-        const bGW = b.gamesWon ?? 0;
+        const aDiff = (a.gamesWon ?? 0) - (a.gamesLost ?? 0);
+        const bDiff = (b.gamesWon ?? 0) - (b.gamesLost ?? 0);
         const aPlayed = a.matchesPlayed ?? 0;
         const bPlayed = b.matchesPlayed ?? 0;
         if (bPts !== aPts) return bPts - aPts;
         if (bWon !== aWon) return bWon - aWon;
-        if (bGW !== aGW) return bGW - aGW;
+        if (bDiff !== aDiff) return bDiff - aDiff;
         return aPlayed - bPlayed;
       });
 
@@ -2001,10 +2008,11 @@ export async function removePlayerFromSeason(
       let pts = 0;
       let won = 0;
       let gw = 0;
+      let gl = 0;
       for (const um of remainingMatches) {
         const onA = um.player1Id === pid || um.partner1Id === pid;
         const userWon = (onA && um.winner === "A") || (!onA && um.winner === "B");
-        // Count games won by this player's team
+        // Count games won and lost by this player's team
         if (um.score) {
           for (const set of um.score.trim().split(/\s+/)) {
             const parts = set.split("-");
@@ -2013,6 +2021,7 @@ export async function removePlayerFromSeason(
             const g1 = parseInt(parts[1], 10);
             if (isNaN(g0) || isNaN(g1)) continue;
             gw += onA ? g0 : g1;
+            gl += onA ? g1 : g0;
           }
         }
         if (userWon) {
@@ -2038,7 +2047,7 @@ export async function removePlayerFromSeason(
 
       await db
         .update(seasonEntrants)
-        .set({ seasonPoints: pts, matchesPlayed: remainingMatches.length, matchesWon: won, gamesWon: gw })
+        .set({ seasonPoints: pts, matchesPlayed: remainingMatches.length, matchesWon: won, gamesWon: gw, gamesLost: gl })
         .where(eq(seasonEntrants.id, otherEntrant[0].id));
     }
   }

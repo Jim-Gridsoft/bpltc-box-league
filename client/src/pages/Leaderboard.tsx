@@ -46,7 +46,7 @@ function BoxCard({ boxId, name, level, expanded, onToggle }: {
                   <th className="px-4 py-2 text-center">Pts</th>
                   <th className="px-4 py-2 text-center hidden sm:table-cell">P</th>
                   <th className="px-4 py-2 text-center hidden sm:table-cell">W</th>
-                  <th className="px-4 py-2 text-center hidden sm:table-cell" title="Games Won">GW</th>
+                  <th className="px-4 py-2 text-center hidden sm:table-cell" title="Games Differential (Won - Lost)">GD</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -57,7 +57,7 @@ function BoxCard({ boxId, name, level, expanded, onToggle }: {
                     <td className="px-4 py-2 text-center font-bold text-[#1b4332]">{m.seasonPoints}</td>
                     <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{m.matchesPlayed}</td>
                     <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{m.matchesWon}</td>
-                    <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{(m as any).gamesWon ?? 0}</td>
+                    <td className="px-4 py-2 text-center text-gray-500 hidden sm:table-cell">{(() => { const d = ((m as any).gamesWon ?? 0) - ((m as any).gamesLost ?? 0); return (d > 0 ? '+' : '') + d; })()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -148,7 +148,7 @@ export default function Leaderboard() {
                     <th className="px-4 py-3 text-center">Pts</th>
                     <th className="px-4 py-3 text-center hidden sm:table-cell">Played</th>
                     <th className="px-4 py-3 text-center hidden sm:table-cell">Won</th>
-                    <th className="px-4 py-3 text-center hidden sm:table-cell" title="Games Won">GW</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell" title="Games Differential (Won - Lost)">GD</th>
                     <th className="px-4 py-3 text-center hidden md:table-cell">Win %</th>
                   </tr>
                 </thead>
@@ -160,7 +160,7 @@ export default function Leaderboard() {
                       <td className="px-4 py-3 text-center font-bold text-[#1b4332] text-base">{player.seasonPoints}</td>
                       <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.matchesPlayed}</td>
                       <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.matchesWon}</td>
-                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{(player as any).gamesWon ?? 0}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{(() => { const d = ((player as any).gamesWon ?? 0) - ((player as any).gamesLost ?? 0); return (d > 0 ? '+' : '') + d; })()}</td>
                       <td className="px-4 py-3 text-center hidden md:table-cell"><WinRate played={player.matchesPlayed} won={player.matchesWon} /></td>
                     </tr>
                   ))}
