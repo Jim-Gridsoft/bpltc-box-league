@@ -338,7 +338,9 @@ export default function Dashboard() {
     onSuccess: (data: { url: string | null }) => {
       if (data.url) {
         toast.info("Redirecting to payment...");
-        window.open(data.url, "_blank");
+        window.location.href = data.url;
+      } else {
+        toast.error("Payment session could not be created. Please try again.");
       }
     },
     onError: (e) => toast.error(e.message),
