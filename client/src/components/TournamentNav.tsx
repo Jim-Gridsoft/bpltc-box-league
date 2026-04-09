@@ -29,12 +29,12 @@ export default function TournamentNav() {
       <div className="container flex items-center justify-between h-14">
         {/* Logo */}
         <Link href="/">
-          <span
-            className="font-semibold text-lg cursor-pointer"
-            style={{ fontFamily: "'Cormorant Garamond', serif", color: "var(--green-deep)" }}
-          >
-            BPLTC Doubles Box League 2026
-          </span>
+          <img
+            src="/bpltc-logo.png"
+            alt="Bramhall Park Lawn Tennis Club"
+            className="cursor-pointer"
+            style={{ height: "40px", width: "auto" }}
+          />
         </Link>
 
         {/* Nav links */}

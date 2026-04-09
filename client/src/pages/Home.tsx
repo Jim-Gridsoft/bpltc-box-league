@@ -231,6 +231,13 @@ export default function Home() {
         />
         <div className="relative container flex flex-col justify-end pb-16 pt-24">
           <div ref={heroRef} className="fade-up max-w-xl">
+            {/* Club logo */}
+            <img
+              src="/bpltc-logo.png"
+              alt="Bramhall Park Lawn Tennis Club"
+              className="mb-5"
+              style={{ height: "64px", width: "auto", borderRadius: "6px", padding: "6px 10px", background: "rgba(255,255,255,0.92)" }}
+            />
             <span
               className="label-tag mb-3 inline-block"
               style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
