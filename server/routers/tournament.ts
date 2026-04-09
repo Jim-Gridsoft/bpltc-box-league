@@ -52,6 +52,7 @@ import {
   getBoxContacts,
   updateContactPreferences,
   updateBoxWhatsappLink,
+  resetYearAccumulator,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -868,6 +869,24 @@ export const tournamentRouter = router({
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       await updateBoxWhatsappLink(input.boxId, input.whatsappLink ?? null);
       return { success: true };
+    }),
+
+  /**
+   * Reset the year accumulator (year_points) for a given year and division.
+   * Deletes all rows matching the year + division combination.
+   * Admin only.
+   */
+  adminResetYearAccumulator: protectedProcedure
+    .input(
+      z.object({
+        year: z.number().int().min(2020).max(2100),
+        division: z.enum(["mens", "ladies"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const deleted = await resetYearAccumulator(input.year, input.division);
+      return { success: true, rowsDeleted: deleted };
     }),
 
   /**

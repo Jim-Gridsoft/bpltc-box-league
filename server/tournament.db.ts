@@ -84,23 +84,38 @@ export async function updateSeasonStatus(
 /**
  * Permanently delete a season and ALL associated data in safe dependency order:
  * 1. fixtures (reference boxes + seasons)
- * 2. matches (reference boxes + seasons)
+ * 2. matches (reference boxes + seasons) — collect affected userIds + year + division first
  * 3. box_members (reference boxes + season_entrants)
  * 4. boxes (reference seasons)
  * 5. partner_slots (reference season_entrants)
  * 6. match_requests (reference partner_slots — already deleted, but clean up by seasonEntrant)
  * 7. season_entrants (reference seasons)
- * 8. year_points rows where totalPoints would go to 0 (optional cleanup)
+ * 8. Recalculate year_points for affected users from remaining matches; delete rows at zero
  * 9. seasons row itself
  */
 export async function deleteSeason(seasonId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Look up season metadata before deletion (needed for year_points cleanup)
+  const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
+  const seasonYear = seasonRows[0]?.year ?? new Date().getFullYear();
+  const seasonDiv: "mens" | "ladies" = seasonRows[0]?.division ?? "mens";
+
   // 1. Delete fixtures for this season
   await db.delete(fixtures).where(eq(fixtures.seasonId, seasonId));
 
-  // 2. Delete matches for this season
+  // 2. Collect all userIds involved in matches for this season before deleting them
+  const seasonMatches = await db.select().from(matches).where(eq(matches.seasonId, seasonId));
+  const affectedUserIds = new Set<number>();
+  for (const m of seasonMatches) {
+    affectedUserIds.add(m.player1Id);
+    affectedUserIds.add(m.partner1Id);
+    affectedUserIds.add(m.player2Id);
+    affectedUserIds.add(m.partner2Id);
+  }
+
+  // 2b. Delete matches for this season
   await db.delete(matches).where(eq(matches.seasonId, seasonId));
 
   // 3. Get all boxes for this season so we can delete box_members
@@ -140,7 +155,77 @@ export async function deleteSeason(seasonId: number) {
   // 6. Delete season entrants
   await db.delete(seasonEntrants).where(eq(seasonEntrants.seasonId, seasonId));
 
-  // 7. Delete the season itself
+  // 7. Recalculate year_points for affected users from their remaining matches in this year/division
+  //    (matches from other seasons in the same year/division are still valid)
+  if (affectedUserIds.size > 0) {
+    // Fetch all remaining matches in the same year across all seasons with the same division
+    const sameDivSeasons = await db
+      .select({ id: seasons.id })
+      .from(seasons)
+      .where(and(eq(seasons.year, seasonYear), eq(seasons.division, seasonDiv)));
+    const sameDivSeasonIds = sameDivSeasons.map((s) => s.id);
+
+    const allRemainingMatches = sameDivSeasonIds.length > 0
+      ? await db.select().from(matches).where(inArray(matches.seasonId, sameDivSeasonIds))
+      : [];
+
+    for (const userId of Array.from(affectedUserIds)) {
+      // Recalculate points from remaining matches for this user
+      const userMatches = allRemainingMatches.filter(
+        (m) => m.player1Id === userId || m.partner1Id === userId ||
+               m.player2Id === userId || m.partner2Id === userId
+      );
+
+      let totalPts = 0;
+      let totalPlayed = 0;
+      let totalWon = 0;
+      for (const m of userMatches) {
+        const onTeamA = m.player1Id === userId || m.partner1Id === userId;
+        const won = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
+        if (won) {
+          totalPts += 2;
+          totalWon++;
+        } else {
+          // Count sets won by this player's team
+          let setsWon = 0;
+          if (m.score) {
+            for (const set of m.score.trim().split(/\s+/)) {
+              const parts = set.split("-");
+              if (parts.length !== 2) continue;
+              const g0 = parseInt(parts[0], 10);
+              const g1 = parseInt(parts[1], 10);
+              if (isNaN(g0) || isNaN(g1)) continue;
+              const userGames = onTeamA ? g0 : g1;
+              const oppGames = onTeamA ? g1 : g0;
+              if (userGames > oppGames) setsWon++;
+            }
+          }
+          totalPts += setsWon > 0 ? 1 : 0;
+        }
+        totalPlayed++;
+      }
+
+      const existingYP = await db
+        .select()
+        .from(yearPoints)
+        .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, seasonYear), eq(yearPoints.division, seasonDiv)))
+        .limit(1);
+
+      if (existingYP[0]) {
+        if (totalPts === 0 && totalPlayed === 0) {
+          // No remaining matches — remove the row entirely
+          await db.delete(yearPoints).where(eq(yearPoints.id, existingYP[0].id));
+        } else {
+          await db
+            .update(yearPoints)
+            .set({ totalPoints: totalPts, totalMatchesPlayed: totalPlayed, totalMatchesWon: totalWon })
+            .where(eq(yearPoints.id, existingYP[0].id));
+        }
+      }
+    }
+  }
+
+  // 8. Delete the season itself
   await db.delete(seasons).where(eq(seasons.id, seasonId));
 }
 
@@ -2116,4 +2201,32 @@ export async function updateBoxWhatsappLink(boxId: number, whatsappLink: string 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(boxes).set({ whatsappLink }).where(eq(boxes.id, boxId));
+}
+
+// ── Year Accumulator Reset ────────────────────────────────────────────────────
+
+/**
+ * Reset the year accumulator for a given year and division by deleting all
+ * year_points rows that match. Used by admins to clear stale or incorrect data.
+ *
+ * @param year   The calendar year to reset (e.g. 2026)
+ * @param division  "mens" | "ladies"
+ * @returns The number of rows deleted
+ */
+export async function resetYearAccumulator(year: number, division: "mens" | "ladies"): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select({ id: yearPoints.id })
+    .from(yearPoints)
+    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+
+  if (existing.length === 0) return 0;
+
+  await db
+    .delete(yearPoints)
+    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+
+  return existing.length;
 }

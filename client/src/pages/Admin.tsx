@@ -199,6 +199,15 @@ export default function Admin() {
 
   // WhatsApp link state: boxId -> draft link string
   const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
+  const [resetYearValue, setResetYearValue] = useState(new Date().getFullYear());
+  const [resetYearDivision, setResetYearDivision] = useState<"mens" | "ladies">("mens");
+  const resetYearAccumulatorMutation = trpc.tournament.adminResetYearAccumulator.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Year accumulator reset. ${data.rowsDeleted} record${data.rowsDeleted === 1 ? "" : "s"} deleted.`);
+      utils.tournament.yearLeaderboard.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
   const updateBoxWhatsappMutation = trpc.tournament.adminUpdateBoxWhatsapp.useMutation({
     onSuccess: () => {
       toast.success("WhatsApp link saved.");
@@ -1108,6 +1117,47 @@ export default function Admin() {
                 className="bg-red-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2">
                 {sandboxResetMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 Reset Sandbox Data
+              </button>
+            </div>
+
+            {/* ── Reset Year Accumulator ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-orange-100 p-6">
+              <h3 className="font-serif text-lg font-bold text-orange-700 mb-1">Reset Year Accumulator</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Clears all year-long points totals for the selected year and division. Use this if a season was deleted and the accumulator still shows stale data, or to start the annual tally from scratch.
+              </p>
+              <div className="flex flex-wrap gap-3 items-end mb-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Year</label>
+                  <input
+                    type="number"
+                    value={resetYearValue}
+                    onChange={(e) => setResetYearValue(Number(e.target.value))}
+                    min={2020} max={2100}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-24 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Division</label>
+                  <select
+                    value={resetYearDivision}
+                    onChange={(e) => setResetYearDivision(e.target.value as "mens" | "ladies")}
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400">
+                    <option value="mens">Men&rsquo;s</option>
+                    <option value="ladies">Ladies&rsquo;</option>
+                  </select>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (confirm(`Reset the ${resetYearValue} ${resetYearDivision === "mens" ? "Men's" : "Ladies'"} year accumulator? All year-long points totals for this year and division will be permanently deleted. This cannot be undone.`)) {
+                    resetYearAccumulatorMutation.mutate({ year: resetYearValue, division: resetYearDivision });
+                  }
+                }}
+                disabled={resetYearAccumulatorMutation.isPending}
+                className="bg-orange-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-orange-700 transition-colors disabled:opacity-50 flex items-center gap-2">
+                {resetYearAccumulatorMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                Reset Year Accumulator
               </button>
             </div>
           </div>
