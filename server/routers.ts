@@ -3,7 +3,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { tournamentRouter } from "./routers/tournament";
-import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus, updateUserProfile, getUserById, updateUserPasswordHash } from "./db";
+import { getAllUsers, setUserRole, createDispute, getAllDisputes, updateDisputeStatus, updateUserProfile, getUserById, updateUserPasswordHash, createPasswordResetToken, consumePasswordResetToken } from "./db";
+import { sendPasswordResetEmail } from "./_core/email";
 import { notifyOwner } from "./_core/notification";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -109,6 +110,43 @@ export const appRouter = router({
         }
         const newHash = await hashPassword(input.newPassword);
         await updateUserPasswordHash(ctx.user.id, newHash);
+        return { success: true };
+      }),
+
+    /** Request a password reset email (public — no auth required) */
+    forgotPassword: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ input }) => {
+        // Always return success to prevent email enumeration attacks
+        const user = await getUserByEmail(input.email);
+        if (!user || !user.email) return { success: true };
+        // Only allow password reset for email/password accounts
+        if (user.loginMethod !== "email") return { success: true };
+        const token = await createPasswordResetToken(user.id);
+        await sendPasswordResetEmail({
+          to: user.email,
+          name: user.name ?? "Member",
+          resetToken: token,
+        });
+        return { success: true };
+      }),
+
+    /** Consume a reset token and set a new password (public — no auth required) */
+    resetPassword: publicProcedure
+      .input(z.object({
+        token: z.string().min(1),
+        newPassword: z.string().min(8).max(128),
+      }))
+      .mutation(async ({ input }) => {
+        const userId = await consumePasswordResetToken(input.token);
+        if (!userId) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "This reset link is invalid or has expired. Please request a new one.",
+          });
+        }
+        const newHash = await hashPassword(input.newPassword);
+        await updateUserPasswordHash(userId, newHash);
         return { success: true };
       }),
   }),

@@ -3,7 +3,7 @@ import { trpc } from "@/lib/trpc";
 import TournamentNav from "@/components/TournamentNav";
 import { Loader2, LogIn, UserPlus, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -194,17 +194,28 @@ export default function Login() {
           </form>
 
           {mode === "login" && (
-            <p className="text-center text-xs mt-4" style={{ color: "var(--charcoal-mid)" }}>
-              Don't have an account?{" "}
-              <button
-                type="button"
-                onClick={() => setMode("register")}
-                className="font-semibold underline"
-                style={{ color: "var(--green-deep)" }}
-              >
-                Register here
-              </button>
-            </p>
+            <div className="text-center mt-4 space-y-2">
+              <p className="text-xs" style={{ color: "var(--charcoal-mid)" }}>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("register")}
+                  className="font-semibold underline"
+                  style={{ color: "var(--green-deep)" }}
+                >
+                  Register here
+                </button>
+              </p>
+              <p className="text-xs" style={{ color: "var(--charcoal-mid)" }}>
+                <Link
+                  href="/forgot-password"
+                  className="font-semibold underline"
+                  style={{ color: "var(--charcoal-mid)" }}
+                >
+                  Forgot your password?
+                </Link>
+              </p>
+            </div>
           )}
         </div>
       </div>

@@ -1,6 +1,7 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, disputes, InsertDispute } from "../drizzle/schema";
+import { InsertUser, users, disputes, InsertDispute, passwordResetTokens } from "../drizzle/schema";
+import crypto from "crypto";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -185,4 +186,52 @@ export async function updateUserPasswordHash(userId: number, passwordHash: strin
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+}
+
+// ── Password Reset Tokens ────────────────────────────────────────────────────
+
+/** Create a new password reset token for a user. Returns the plain token string. */
+export async function createPasswordResetToken(userId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Invalidate any existing unused tokens for this user
+  await db
+    .delete(passwordResetTokens)
+    .where(and(eq(passwordResetTokens.userId, userId), eq(passwordResetTokens.usedAt, null as unknown as Date)));
+
+  const token = crypto.randomBytes(48).toString("hex"); // 96-char hex string
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await db.insert(passwordResetTokens).values({ userId, token, expiresAt });
+  return token;
+}
+
+/** Look up a valid (unused, non-expired) reset token. Returns the userId or null. */
+export async function consumePasswordResetToken(token: string): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const now = new Date();
+  const rows = await db
+    .select()
+    .from(passwordResetTokens)
+    .where(
+      and(
+        eq(passwordResetTokens.token, token),
+        gt(passwordResetTokens.expiresAt, now)
+      )
+    )
+    .limit(1);
+
+  const row = rows[0];
+  if (!row || row.usedAt) return null;
+
+  // Mark as used
+  await db
+    .update(passwordResetTokens)
+    .set({ usedAt: now })
+    .where(eq(passwordResetTokens.id, row.id));
+
+  return row.userId;
 }
