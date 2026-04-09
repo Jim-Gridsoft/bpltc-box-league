@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS `boxes` (
   `seasonId` int NOT NULL,
   `name` varchar(32) NOT NULL,
   `level` int NOT NULL,
+  `whatsappLink` varchar(512),
   `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `boxes_id` PRIMARY KEY(`id`)
 );

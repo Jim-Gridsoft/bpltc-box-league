@@ -2102,3 +2102,10 @@ export async function updateContactPreferences(
     .set({ phoneNumber: phoneNumber ?? null, shareContact })
     .where(eq(seasonEntrants.id, seasonEntrantId));
 }
+
+/** Admin: set or clear the WhatsApp group invite link for a box. */
+export async function updateBoxWhatsappLink(boxId: number, whatsappLink: string | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(boxes).set({ whatsappLink }).where(eq(boxes.id, boxId));
+}

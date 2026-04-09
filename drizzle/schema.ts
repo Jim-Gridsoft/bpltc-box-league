@@ -98,6 +98,8 @@ export const boxes = mysqlTable("boxes", {
   seasonId: int("seasonId").notNull(),
   name: varchar("name", { length: 32 }).notNull(), // e.g. "Box A", "Box B"
   level: int("level").notNull(), // 1 = top, 2 = second, etc.
+  /** Optional WhatsApp group invite link for this box */
+  whatsappLink: varchar("whatsappLink", { length: 512 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

@@ -197,6 +197,16 @@ export default function Admin() {
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
+  // WhatsApp link state: boxId -> draft link string
+  const [whatsappDrafts, setWhatsappDrafts] = useState<Record<number, string>>({});
+  const updateBoxWhatsappMutation = trpc.tournament.adminUpdateBoxWhatsapp.useMutation({
+    onSuccess: () => {
+      toast.success("WhatsApp link saved.");
+      utils.tournament.seasonBoxes.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
   if (authLoading) return (
     <div className="min-h-screen bg-[#faf6ee] flex items-center justify-center">
       <Loader2 className="w-8 h-8 animate-spin text-[#1b4332]" />
@@ -483,6 +493,56 @@ export default function Admin() {
                   <p className="text-xs text-gray-500">
                     Balancer matches are played normally but award points only to players who needed the extra match to reach the season maximum. Players already at the maximum score 0 points in balancer fixtures.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* WhatsApp group links */}
+            {boxes && boxes.length > 0 && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xl">💬</span>
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">WhatsApp Group Links</h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Paste a WhatsApp group invite link for each box. Players will see a &ldquo;Join Box WhatsApp Group&rdquo; button on their dashboard.
+                </p>
+                <div className="space-y-3">
+                  {boxes.map((box) => {
+                    const draft = whatsappDrafts[box.id] ?? (box.whatsappLink ?? "");
+                    return (
+                      <div key={box.id} className="flex items-center gap-3">
+                        <span className="text-sm font-semibold text-gray-700 w-16 shrink-0">{box.name}</span>
+                        <input
+                          type="url"
+                          placeholder="https://chat.whatsapp.com/..."
+                          value={draft}
+                          onChange={(e) => setWhatsappDrafts((prev) => ({ ...prev, [box.id]: e.target.value }))}
+                          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]"
+                        />
+                        <button
+                          onClick={() => {
+                            const link = draft.trim() || null;
+                            updateBoxWhatsappMutation.mutate({ boxId: box.id, whatsappLink: link });
+                          }}
+                          disabled={updateBoxWhatsappMutation.isPending}
+                          className="bg-[#25D366] text-white px-4 py-2 rounded-lg font-semibold text-sm hover:bg-[#1ebe5a] transition-colors disabled:opacity-50 shrink-0">
+                          Save
+                        </button>
+                        {box.whatsappLink && (
+                          <button
+                            onClick={() => {
+                              setWhatsappDrafts((prev) => ({ ...prev, [box.id]: "" }));
+                              updateBoxWhatsappMutation.mutate({ boxId: box.id, whatsappLink: null });
+                            }}
+                            disabled={updateBoxWhatsappMutation.isPending}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium shrink-0 disabled:opacity-50">
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

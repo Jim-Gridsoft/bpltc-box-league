@@ -650,6 +650,27 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ── WhatsApp Group ── */}
+            {myBox?.whatsappLink && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className="text-xl">💬</span>
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">Box WhatsApp Group</h2>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  Join your box&rsquo;s WhatsApp group to coordinate matches and stay in touch with your box-mates.
+                </p>
+                <a
+                  href={myBox.whatsappLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-[#25D366] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#1ebe5a] transition-colors">
+                  <span className="text-base">💬</span>
+                  Join Box WhatsApp Group
+                </a>
+              </div>
+            )}
+
             {/* ── Box Contacts ── */}
             {myBox && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">

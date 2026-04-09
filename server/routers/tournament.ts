@@ -51,6 +51,7 @@ import {
   getRemovePlayerPreview,
   getBoxContacts,
   updateContactPreferences,
+  updateBoxWhatsappLink,
 } from "../tournament.db";
 import { TOURNAMENT_ENTRY } from "../products";
 import Stripe from "stripe";
@@ -851,6 +852,22 @@ export const tournamentRouter = router({
         });
       }
       return getBoxContacts(input.boxId, ctx.user.id);
+    }),
+
+  /**
+   * Admin: set or clear the WhatsApp group invite link for a specific box.
+   */
+  adminUpdateBoxWhatsapp: protectedProcedure
+    .input(
+      z.object({
+        boxId: z.number(),
+        whatsappLink: z.string().url().max(512).nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      await updateBoxWhatsappLink(input.boxId, input.whatsappLink ?? null);
+      return { success: true };
     }),
 
   /**
