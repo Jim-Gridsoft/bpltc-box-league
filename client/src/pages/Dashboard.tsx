@@ -288,6 +288,7 @@ export default function Dashboard() {
   const [editPhone, setEditPhone] = useState("");
   const [editShareContact, setEditShareContact] = useState(false);
   const [editingContact, setEditingContact] = useState(false);
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const utils = trpc.useUtils();
 
   const { data: seasons } = trpc.tournament.seasons.useQuery();
@@ -358,6 +359,7 @@ export default function Dashboard() {
     const params = new URLSearchParams(window.location.search);
     const paymentStatus = params.get("payment");
     if (paymentStatus === "success") {
+      setPaymentConfirmed(true);
       toast.success("Payment received! Your registration is confirmed.");
       // Poll for paid status — webhook may take a few seconds to fire
       let attempts = 0;
@@ -580,6 +582,21 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            {/* ── Payment Confirmation Banner ── */}
+            {paymentConfirmed && (
+              <div className="bg-green-50 border border-green-200 rounded-2xl p-5 flex items-start gap-4">
+                <CheckCircle2 className="w-7 h-7 text-green-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-serif text-lg font-bold text-green-800 mb-1">Payment Confirmed</h3>
+                  <p className="text-sm text-green-700">
+                    Thank you — your £10 entry fee has been received and your place in the{" "}
+                    <strong>{activeSeason?.name ?? "Box League"}</strong> is confirmed.
+                    You will be assigned to a box when the season opens.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* ── Stats row ── */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
