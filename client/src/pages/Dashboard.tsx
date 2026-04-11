@@ -284,6 +284,7 @@ export default function Dashboard() {
   const [regAbility, setRegAbility] = useState(3);
   const [regPhone, setRegPhone] = useState("");
   const [regShareContact, setRegShareContact] = useState(false);
+  const [regDivisionConfirmed, setRegDivisionConfirmed] = useState(false);
   // Contact preferences editing state
   const [editPhone, setEditPhone] = useState("");
   const [editShareContact, setEditShareContact] = useState(false);
@@ -445,11 +446,33 @@ export default function Dashboard() {
         ) : !myEntry ? (
           /* ── Registration card ── */
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-4">
               <ClipboardList className="w-6 h-6 text-[#c9a84c]" />
               <h2 className="font-serif text-xl font-bold text-[#1b4332]">
                 Register for {activeSeason?.name ?? "the current season"} Box League
               </h2>
+            </div>
+            {/* Division warning */}
+            <div className={`mb-5 p-4 rounded-xl border-2 flex items-start gap-3 ${
+              activeSeason?.division === "ladies"
+                ? "bg-pink-50 border-pink-300"
+                : "bg-blue-50 border-blue-300"
+            }`}>
+              <span className="text-2xl flex-shrink-0">{activeSeason?.division === "ladies" ? "👩" : "👨"}</span>
+              <div>
+                <p className={`font-bold text-sm ${
+                  activeSeason?.division === "ladies" ? "text-pink-800" : "text-blue-800"
+                }`}>
+                  This is the <span className="uppercase">{activeSeason?.division === "ladies" ? "Ladies'" : "Men's"}</span> division
+                </p>
+                <p className={`text-xs mt-0.5 ${
+                  activeSeason?.division === "ladies" ? "text-pink-700" : "text-blue-700"
+                }`}>
+                  {activeSeason?.division === "ladies"
+                    ? "Please ensure you are registering for the correct division. If you meant to enter the Men's competition, use the season selector above."
+                    : "Please ensure you are registering for the correct division. If you meant to enter the Ladies' competition, use the season selector above."}
+                </p>
+              </div>
             </div>
             <div className="space-y-4 max-w-sm">
               <div>
@@ -513,6 +536,18 @@ export default function Dashboard() {
                   </span>
                 </label>
               </div>
+              <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <input
+                  id="divisionConfirm"
+                  type="checkbox"
+                  checked={regDivisionConfirmed}
+                  onChange={(e) => setRegDivisionConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#1b4332] focus:ring-[#1b4332] cursor-pointer"
+                />
+                <label htmlFor="divisionConfirm" className="text-sm text-amber-800 cursor-pointer">
+                  I confirm I am registering for the <strong>{activeSeason?.division === "ladies" ? "Ladies'" : "Men's"}</strong> division
+                </label>
+              </div>
               <button
                 onClick={() =>
                   activeSeason &&
@@ -524,7 +559,7 @@ export default function Dashboard() {
                     shareContact: regShareContact,
                   })
                 }
-                disabled={!regName.trim() || registerMutation.isPending}
+                disabled={!regName.trim() || !regDivisionConfirmed || registerMutation.isPending}
                 className="w-full bg-[#1b4332] text-white py-2.5 rounded-lg font-semibold text-sm hover:bg-[#2d6a4f] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {registerMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
