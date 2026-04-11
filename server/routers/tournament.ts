@@ -168,8 +168,8 @@ export const tournamentRouter = router({
           customer_name: ctx.user.name ?? "",
         },
         allow_promotion_codes: true,
-        success_url: `${origin}/my-season?payment=success`,
-        cancel_url: `${origin}/my-season?payment=cancelled`,
+        success_url: `${origin}/dashboard?payment=success`,
+        cancel_url: `${origin}/dashboard?payment=cancelled`,
       });
 
       return { url: session.url };
