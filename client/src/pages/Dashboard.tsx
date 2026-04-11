@@ -693,6 +693,25 @@ export default function Dashboard() {
               </div>
             )}
 
+            {/* ── All-Participants WhatsApp Group ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-xl">💬</span>
+                <h2 className="font-serif text-xl font-bold text-[#1b4332]">BPLTC Box League Group</h2>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Join the main WhatsApp group for all Box League participants — men&rsquo;s and ladies&rsquo; divisions — for news, updates and social chat.
+              </p>
+              <a
+                href="https://chat.whatsapp.com/F6RvZ3WG2Wj5F9J3JykoGk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-[#25D366] text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-[#1ebe5a] transition-colors">
+                <span className="text-base">💬</span>
+                Join All-Participants WhatsApp Group
+              </a>
+            </div>
+
             {/* ── Box Contacts ── */}
             {myBox && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
