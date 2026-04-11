@@ -1056,14 +1056,22 @@ export async function sandboxResetSeason(seasonId: number) {
  *
  * @returns Array of box sizes in order (box 1 first, strongest players first).
  */
-export function computeBoxSizes(n: number, targetBoxSize: number = 6): number[] {
+export function computeBoxSizes(n: number, targetBoxSize: number = 5): number[] {
   if (n < 4) return []; // Not enough players for even one box
-  const naturalBoxes = Math.ceil(n / targetBoxSize);
+  const MAX_BOX_SIZE = 5; // Hard cap: no box may exceed 5 players
+  const effectiveTarget = Math.min(targetBoxSize, MAX_BOX_SIZE);
+  const naturalBoxes = Math.ceil(n / effectiveTarget);
   const maxBoxesForMin4 = Math.max(1, Math.floor(n / 4));
   const numBoxes = Math.min(naturalBoxes, maxBoxesForMin4);
   const base = Math.floor(n / numBoxes);
   const remainder = n % numBoxes;
-  return Array.from({ length: numBoxes }, (_, i) => base + (i < remainder ? 1 : 0));
+  // Safety check: if any box would exceed the hard cap, add another box
+  const sizes = Array.from({ length: numBoxes }, (_, i) => base + (i < remainder ? 1 : 0));
+  if (sizes.some((s) => s > MAX_BOX_SIZE)) {
+    // Recurse with one more box
+    return computeBoxSizes(n, effectiveTarget - 1 < 4 ? 4 : effectiveTarget - 1);
+  }
+  return sizes;
 }
 
 /**
@@ -1074,7 +1082,7 @@ export function computeBoxSizes(n: number, targetBoxSize: number = 6): number[] 
  */
 export async function autoCreateBoxes(
   seasonId: number,
-  targetBoxSize: number = 6
+  targetBoxSize: number = 5
 ): Promise<{ boxId: number; name: string; level: number; members: { entrantId: number; displayName: string; abilityRating: number }[] }[]> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1255,7 +1263,7 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   const n = playerIds.length;
   if (n < 4) return [];
 
-  const target = n - 1; // target matches per player
+  const target = 5; // target matches per player (fixed at 5 for all box sizes)
 
   // Generate all unique doubles fixtures (C(n,4) × 3 team splits)
   const allCombos: { teamA: [number, number]; teamB: [number, number] }[] = [];

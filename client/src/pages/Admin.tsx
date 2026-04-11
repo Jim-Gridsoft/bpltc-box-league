@@ -412,14 +412,27 @@ export default function Admin() {
                 <h2 className="font-serif text-xl font-bold text-[#1b4332]">Auto-Create Ability-Seeded Boxes</h2>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                Automatically groups all paid entrants into boxes by ability rating (highest to lowest). Existing boxes and fixtures for this season will be cleared and recreated.
+                Automatically groups all paid entrants into boxes by ability rating (highest to lowest). Box sizes are capped at 5 players. All players play exactly 5 matches regardless of box size.
               </p>
+              {/* Awkward player count warning */}
+              {[6, 7, 11].includes(paid) && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-lg flex items-start gap-2">
+                  <span className="text-amber-600 font-bold text-sm flex-shrink-0">⚠️</span>
+                  <p className="text-sm text-amber-800">
+                    <strong>{paid} paid players</strong> cannot be split cleanly into boxes of 4 and 5.
+                    Consider waiting for one more player to register before creating boxes
+                    {paid === 6 ? " (8 players = 2×4, or wait for a 9th for 1×4+1×5)" :
+                     paid === 7 ? " (wait for an 8th player to get 2×4)" :
+                     " (wait for a 12th player to get 3×4, or a 10th for 2×5)"}.
+                  </p>
+                </div>
+              )}
               <div className="flex items-end gap-4 flex-wrap">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Target players per box</label>
                   <select value={targetBoxSize} onChange={(e) => setTargetBoxSize(Number(e.target.value))}
                     className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
-                    {[4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n} players per box</option>)}
+                    {[4, 5].map((n) => <option key={n} value={n}>{n} players per box</option>)}
                   </select>
                 </div>
                 <button
@@ -449,7 +462,7 @@ export default function Admin() {
                 <h2 className="font-serif text-xl font-bold text-[#1b4332]">Generate Round-Robin Fixtures</h2>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                Generates a full balanced fixture schedule for all boxes. Each player gets an equal number of matches. Where box sizes require it, a balancer match is added — points are only awarded to the players who needed the extra fixture.
+                Generates a balanced fixture schedule for all boxes. Every player plays exactly 5 matches regardless of box size (4 or 5 players). For boxes of 4, the schedule includes 2 repeat pairings to reach the 5-match target.
               </p>
               {/* Confirmation guard — shown when fixtures already exist */}
               {confirmRegenFixtures ? (
