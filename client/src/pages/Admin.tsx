@@ -462,7 +462,7 @@ export default function Admin() {
                 <h2 className="font-serif text-xl font-bold text-[#1b4332]">Generate Round-Robin Fixtures</h2>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                Generates a balanced fixture schedule for all boxes. Every player plays exactly 5 matches regardless of box size (4 or 5 players). For boxes of 4, the schedule includes 2 repeat pairings to reach the 5-match target.
+                Generates a balanced fixture schedule for all boxes. Every player plays exactly 4 matches regardless of box size. Boxes of 5 produce 5 fixtures (each player sits out once). Boxes of 4 produce 4 fixtures (3 unique pairings plus 1 repeat of the best-varied pairing).
               </p>
               {/* Confirmation guard — shown when fixtures already exist */}
               {confirmRegenFixtures ? (
