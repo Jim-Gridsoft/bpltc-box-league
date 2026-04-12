@@ -52,7 +52,7 @@ const HOW_IT_WORKS = [
   {
     icon: Users,
     title: "Get Placed in a Box",
-    body: "The committee seeds players into ability-matched boxes based on the number of entrants. You will play every other player in your box over the 3-month season — roughly one match per month.",
+    body: "The committee seeds players into ability-matched boxes of 4 or 5 players. Every player plays exactly 4 matches per season, regardless of box size — roughly one match per month over the 3-month season.",
   },
   {
     icon: RefreshCw,
@@ -79,7 +79,8 @@ const HOW_IT_WORKS = [
 const RULES_MENS = [
   "Entry fee is £10 per player per season.",
   "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
-  "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
+  "Players are seeded into ability-matched boxes of 4 or 5 players by the committee at the start of each season.",
+  "Every player plays exactly 4 matches per season regardless of box size. Boxes of 5 play 5 fixtures with each player sitting out one match. Boxes of 4 play 4 fixtures, with one fixture repeated to ensure equal match counts.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
   "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
   "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
@@ -96,7 +97,8 @@ const RULES_MENS = [
 const RULES_LADIES = [
   "Entry fee is £10 per player per season.",
   "The competition is open to female members of Bramhall Park Lawn Tennis Club.",
-  "Players are seeded into ability-matched boxes by the committee at the start of each season. Box sizes are determined by the total number of entrants.",
+  "Players are seeded into ability-matched boxes of 4 or 5 players by the committee at the start of each season.",
+  "Every player plays exactly 4 matches per season regardless of box size. Boxes of 5 play 5 fixtures with each player sitting out one match. Boxes of 4 play 4 fixtures, with one fixture repeated to ensure equal match counts.",
   "Each match is a best-of-3 sets doubles match played at Bramhall Park LTC.",
   "Partners rotate each match — the system maximises partner variation so you play with as many different partners as possible across the season.",
   "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
