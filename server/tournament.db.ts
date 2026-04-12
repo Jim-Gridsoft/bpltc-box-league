@@ -1263,7 +1263,7 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   const n = playerIds.length;
   if (n < 4) return [];
 
-  const target = 5; // target matches per player (fixed at 5 for all box sizes)
+  const target = 4; // target matches per player (fixed at 4 for all box sizes)
 
   // Generate all unique doubles fixtures (C(n,4) × 3 team splits)
   const allCombos: { teamA: [number, number]; teamB: [number, number] }[] = [];
@@ -1342,19 +1342,24 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
     round++;
   }
 
-  // ── Phase 2: balancer pass ──────────────────────────────────────────────────
+  // ── Phase 2: top-up pass — add repeat fixtures until everyone reaches target ─
+  // This handles the case where Phase 1 exhausted all unique combos but players
+  // are still below the target (e.g. a box of 4 with target=5: 3 unique matches
+  // are generated in Phase 1, then 2 more repeats are needed here).
   let safetyLimit = 100;
   while (safetyLimit-- > 0) {
-    const counts = Object.values(matchCount);
+    const counts = Object.values(matchCount) as number[];
     const maxCount = Math.max(...counts);
     const minCount = Math.min(...counts);
-    if (maxCount === minCount) break;
 
-    const needMore = playerIds.filter((p) => matchCount[p] < maxCount);
+    // Stop only when everyone has reached the target
+    if (minCount >= target) break;
+
+    const needMore = playerIds.filter((p) => matchCount[p] < target);
     if (needMore.length === 0) break;
 
-    // Prefer fixtures where ALL 4 players are under-count (avoids overshooting).
-    // Fall back to fixtures with at least one under-count player only if needed.
+    // Prefer fixtures where ALL 4 players are under-target (avoids overshooting).
+    // Fall back to fixtures with at least one under-target player only if needed.
     const allFour = allCombos
       .map((f, i) => ({ f, i, score: scoreFixture(f) }))
       .filter(({ f }) => [...f.teamA, ...f.teamB].every((p) => needMore.includes(p)))
@@ -1369,9 +1374,11 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
     if (!chosen) break;
 
     const involved = [...chosen.f.teamA, ...chosen.f.teamB];
-    const eligiblePlayers = involved.filter((p) => matchCount[p] < maxCount);
+    // Mark as balancer only when counts are unequal; if all equal it's a clean repeat
+    const isBalancer = maxCount > minCount;
+    const eligiblePlayers = isBalancer ? involved.filter((p) => matchCount[p] < maxCount) : [];
 
-    scheduled.push({ ...chosen.f, round, isBalancer: true, balancerEligiblePlayers: eligiblePlayers });
+    scheduled.push({ ...chosen.f, round, isBalancer, balancerEligiblePlayers: eligiblePlayers });
     updateCounts(chosen.f);
     round++;
   }
