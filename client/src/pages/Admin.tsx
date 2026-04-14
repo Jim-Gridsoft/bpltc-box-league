@@ -412,7 +412,7 @@ export default function Admin() {
                 <h2 className="font-serif text-xl font-bold text-[#1b4332]">Auto-Create Ability-Seeded Boxes</h2>
               </div>
               <p className="text-sm text-gray-500 mb-4">
-                Automatically groups all paid entrants into boxes by ability rating (highest to lowest). Box sizes are capped at 5 players. All players play exactly 5 matches regardless of box size.
+                Automatically groups all paid entrants into boxes by ability rating (highest to lowest). Box sizes are capped at 5 players. All players play exactly 4 matches regardless of box size.
               </p>
               {/* Awkward player count warning */}
               {[6, 7, 11].includes(paid) && (
