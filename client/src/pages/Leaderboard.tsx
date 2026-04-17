@@ -5,6 +5,17 @@ import { Trophy, Medal, Star, Users, ChevronDown, ChevronUp } from "lucide-react
 
 const CURRENT_YEAR = 2026;
 
+type Division = "mens" | "ladies";
+type Format = "doubles" | "singles";
+type Tab = { division: Division; format: Format; label: string };
+
+const TABS: Tab[] = [
+  { division: "mens", format: "doubles", label: "Men's Doubles" },
+  { division: "ladies", format: "doubles", label: "Ladies' Doubles" },
+  { division: "mens", format: "singles", label: "Men's Singles" },
+  { division: "ladies", format: "singles", label: "Ladies' Singles" },
+];
+
 function getRankIcon(rank: number) {
   if (rank === 1) return <Trophy className="w-5 h-5 text-yellow-500" />;
   if (rank === 2) return <Medal className="w-5 h-5 text-slate-400" />;
@@ -74,15 +85,18 @@ function BoxCard({ boxId, name, level, expanded, onToggle }: {
 export default function Leaderboard() {
   const [showYear, setShowYear] = useState(false);
   const [expandedBox, setExpandedBox] = useState<number | null>(null);
-  const [division, setDivision] = useState<"mens" | "ladies">("mens");
+  const [activeTab, setActiveTab] = useState<Tab>(TABS[0]);
 
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
+  const division = activeTab.division;
+  const format = activeTab.format;
+
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division, format });
   const { data: seasonLeaderboard, isLoading: loadingSeason } = trpc.tournament.seasonLeaderboard.useQuery(
     { seasonId: currentSeason?.id ?? 0 },
     { enabled: !!currentSeason, staleTime: 0 }
   );
   const { data: yearLeaderboard, isLoading: loadingYear } = trpc.tournament.yearLeaderboard.useQuery(
-    { year: CURRENT_YEAR, division },
+    { year: CURRENT_YEAR, division, format },
     { enabled: showYear, staleTime: 0 }
   );
   const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
@@ -91,6 +105,8 @@ export default function Leaderboard() {
   );
 
   const divisionLabel = division === "mens" ? "Men's" : "Ladies'";
+  const formatLabel = format === "singles" ? "Singles" : "Doubles";
+  const isSingles = format === "singles";
 
   return (
     <div className="min-h-screen bg-[#faf6ee]">
@@ -98,25 +114,23 @@ export default function Leaderboard() {
       <div className="relative bg-[#1b4332] text-white py-14 px-4 text-center">
         <div className="max-w-3xl mx-auto">
           <h1 className="font-serif text-4xl md:text-5xl font-bold mb-3">Standings</h1>
-          <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : `BPLTC ${divisionLabel} Doubles Box League ${CURRENT_YEAR}`}</p>
-          {/* Division toggle */}
-          <div className="flex gap-2 justify-center mt-5">
-            <button
-              onClick={() => setDivision("mens")}
-              className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                division === "mens" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
-              }`}
-            >
-              Men's
-            </button>
-            <button
-              onClick={() => setDivision("ladies")}
-              className={`px-5 py-1.5 rounded-full text-sm font-semibold transition-all ${
-                division === "ladies" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
-              }`}
-            >
-              Ladies'
-            </button>
+          <p className="text-green-200 text-lg">{currentSeason ? currentSeason.name : `BPLTC ${divisionLabel} ${formatLabel} Box League ${CURRENT_YEAR}`}</p>
+          {/* Division / Format toggle */}
+          <div className="flex flex-wrap gap-2 justify-center mt-5">
+            {TABS.map((tab) => {
+              const isActive = activeTab.division === tab.division && activeTab.format === tab.format;
+              return (
+                <button
+                  key={tab.label}
+                  onClick={() => { setActiveTab(tab); setExpandedBox(null); }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all ${
+                    isActive ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -233,7 +247,10 @@ export default function Leaderboard() {
             <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">1</div><div className="text-green-200">Won a set but lost the match</div></div>
             <div className="bg-white/10 rounded-xl p-4 text-center"><div className="text-3xl font-bold text-[#c9a84c] mb-1">0</div><div className="text-green-200">Lost both sets (2-0)</div></div>
           </div>
-          <p className="text-green-200 text-sm mt-4">Partners are maximally varied each match — the system rotates partners as much as possible across the season. Win a set and you earn a point even in defeat.</p>
+          <p className="text-green-200 text-sm mt-4">{isSingles
+            ? "Singles fixtures are generated as a round-robin — you face every other player in your box. Win a set and you earn a point even in defeat."
+            : "Partners are maximally varied each match — the system rotates partners as much as possible across the season. Win a set and you earn a point even in defeat."
+          }</p>
         </div>
       </div>
     </div>

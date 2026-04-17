@@ -24,11 +24,14 @@ import {
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
-export async function getAllSeasons(division?: "mens" | "ladies") {
+export async function getAllSeasons(division?: "mens" | "ladies", format?: "doubles" | "singles") {
   const db = await getDb();
   if (!db) return [];
-  if (division) {
-    return db.select().from(seasons).where(eq(seasons.division, division)).orderBy(desc(seasons.startDate));
+  const conditions = [];
+  if (division) conditions.push(eq(seasons.division, division));
+  if (format) conditions.push(eq(seasons.format, format));
+  if (conditions.length > 0) {
+    return db.select().from(seasons).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(seasons.startDate));
   }
   return db.select().from(seasons).orderBy(desc(seasons.startDate));
 }
@@ -44,14 +47,17 @@ export async function getActiveSeason() {
   return rows[0];
 }
 
-export async function getOpenSeason(division?: "mens" | "ladies") {
+export async function getOpenSeason(division?: "mens" | "ladies", format?: "doubles" | "singles") {
   const db = await getDb();
   if (!db) return undefined;
-  // Returns a season that is open for registration OR active for the given division
+  // Returns a season that is open for registration OR active for the given division/format
+  const conditions = [];
+  if (division) conditions.push(eq(seasons.division, division));
+  if (format) conditions.push(eq(seasons.format, format));
   const rows = await db
     .select()
     .from(seasons)
-    .where(division ? eq(seasons.division, division) : undefined)
+    .where(conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined)
     .orderBy(asc(seasons.startDate))
     .limit(10);
   return rows.find((s) => s.status === "registration" || s.status === "active");
@@ -101,6 +107,7 @@ export async function deleteSeason(seasonId: number) {
   const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
   const seasonYear = seasonRows[0]?.year ?? new Date().getFullYear();
   const seasonDiv: "mens" | "ladies" = seasonRows[0]?.division ?? "mens";
+  const seasonFormat: "doubles" | "singles" = (seasonRows[0]?.format as "doubles" | "singles") ?? "doubles";
 
   // 1. Delete fixtures for this season
   await db.delete(fixtures).where(eq(fixtures.seasonId, seasonId));
@@ -162,7 +169,7 @@ export async function deleteSeason(seasonId: number) {
     const sameDivSeasons = await db
       .select({ id: seasons.id })
       .from(seasons)
-      .where(and(eq(seasons.year, seasonYear), eq(seasons.division, seasonDiv)));
+      .where(and(eq(seasons.year, seasonYear), eq(seasons.division, seasonDiv), eq(seasons.format, seasonFormat)));
     const sameDivSeasonIds = sameDivSeasons.map((s) => s.id);
 
     const allRemainingMatches = sameDivSeasonIds.length > 0
@@ -208,7 +215,7 @@ export async function deleteSeason(seasonId: number) {
       const existingYP = await db
         .select()
         .from(yearPoints)
-        .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, seasonYear), eq(yearPoints.division, seasonDiv)))
+        .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, seasonYear), eq(yearPoints.division, seasonDiv), eq(yearPoints.format, seasonFormat)))
         .limit(1);
 
       if (existingYP[0]) {
@@ -300,7 +307,7 @@ export async function getAllSeasonEntrants(seasonId: number) {
 
 // ── Year Points ───────────────────────────────────────────────────────────────
 
-export async function getYearLeaderboard(year: number, division: "mens" | "ladies" = "mens") {
+export async function getYearLeaderboard(year: number, division: "mens" | "ladies" = "mens", format: "doubles" | "singles" = "doubles") {
   const db = await getDb();
   if (!db) return [];
   return db
@@ -317,7 +324,7 @@ export async function getYearLeaderboard(year: number, division: "mens" | "ladie
     })
     .from(yearPoints)
     .leftJoin(users, eq(yearPoints.userId, users.id))
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)))
+    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division), eq(yearPoints.format, format)))
     .orderBy(desc(yearPoints.totalPoints));
 }
 
@@ -326,14 +333,15 @@ export async function upsertYearPoints(
   year: number,
   pointsDelta: number,
   won: boolean,
-  division: "mens" | "ladies" = "mens"
+  division: "mens" | "ladies" = "mens",
+  format: "doubles" | "singles" = "doubles"
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const existing = await db
     .select()
     .from(yearPoints)
-    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, division)))
+    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, division), eq(yearPoints.format, format)))
     .limit(1);
 
   if (existing[0]) {
@@ -350,6 +358,7 @@ export async function upsertYearPoints(
       userId,
       year,
       division,
+      format,
       totalPoints: pointsDelta,
       totalMatchesPlayed: 1,
       totalMatchesWon: won ? 1 : 0,
@@ -551,9 +560,10 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const teamAWon = data.winner === "A";
   const year = data.playedAt.getFullYear();
 
-  // Look up the season's division so year_points are stored per-division
-  const seasonRow = await db.select({ division: seasons.division }).from(seasons).where(eq(seasons.id, data.seasonId)).limit(1);
+  // Look up the season's division and format so year_points are stored per-division and per-format
+  const seasonRow = await db.select({ division: seasons.division, format: seasons.format }).from(seasons).where(eq(seasons.id, data.seasonId)).limit(1);
   const seasonDivision: "mens" | "ladies" = seasonRow[0]?.division ?? "mens";
+  const seasonFormat: "doubles" | "singles" = (seasonRow[0]?.format as "doubles" | "singles") ?? "doubles";
 
   // Parse the score string (e.g. "6-3 4-6 6-5") to count sets and games won per team
   function countScoreStats(score: string | null): { setsA: number; setsB: number; gamesA: number; gamesB: number } {
@@ -595,7 +605,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesB,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision);
+      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision, seasonFormat);
     }
   }
 
@@ -617,7 +627,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesA,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision);
+      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision, seasonFormat);
     }
   }
 
@@ -2421,20 +2431,24 @@ export async function updateBoxWhatsappLink(boxId: number, whatsappLink: string 
  * @param division  "mens" | "ladies"
  * @returns The number of rows deleted
  */
-export async function resetYearAccumulator(year: number, division: "mens" | "ladies"): Promise<number> {
+export async function resetYearAccumulator(year: number, division: "mens" | "ladies", format?: "doubles" | "singles"): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(yearPoints.year, year), eq(yearPoints.division, division)];
+  if (format) conditions.push(eq(yearPoints.format, format));
+  const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
 
   const existing = await db
     .select({ id: yearPoints.id })
     .from(yearPoints)
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+    .where(whereClause);
 
   if (existing.length === 0) return 0;
 
   await db
     .delete(yearPoints)
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+    .where(whereClause);
 
   return existing.length;
 }

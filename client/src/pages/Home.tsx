@@ -19,6 +19,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 
 type Division = "mens" | "ladies";
+type Format = "doubles" | "singles";
+type Tab = { division: Division; format: Format; label: string };
 
 const HERO_IMAGE =
   "https://d2xsxph8kpxj0f.cloudfront.net/310519663452042921/PTKxsipnFcy6SZgTVAYLQb/ladder-hero-8P36hrf3wYXvayVXguUpki.webp";
@@ -43,7 +45,7 @@ function useFadeUp() {
   return ref;
 }
 
-const HOW_IT_WORKS = [
+const HOW_IT_WORKS_DOUBLES = [
   {
     icon: CreditCard,
     title: "Register & Pay",
@@ -112,6 +114,80 @@ const RULES_LADIES = [
   "Contact details (phone number and email) are only shared with other members of your box if you explicitly opt in during registration. You may update your sharing preferences at any time from your Dashboard.",
 ];
 
+const TABS: Tab[] = [
+  { division: "mens", format: "doubles", label: "Men's Doubles" },
+  { division: "ladies", format: "doubles", label: "Ladies' Doubles" },
+  { division: "mens", format: "singles", label: "Men's Singles" },
+  { division: "ladies", format: "singles", label: "Ladies' Singles" },
+];
+
+const RULES_MENS_SINGLES = [
+  "Entry fee is £10 per player per season.",
+  "The competition is open to male members of Bramhall Park Lawn Tennis Club.",
+  "Players are seeded into ability-matched boxes of 4 or 5 players by the committee at the start of each season, based on their singles ability rating.",
+  "Every player plays exactly 4 matches per season regardless of box size. Boxes of 5 play 5 fixtures with each player sitting out one match. Boxes of 4 play 4 fixtures, with one fixture repeated to ensure equal match counts.",
+  "Each match is a best-of-3 sets singles match played at Bramhall Park LTC.",
+  "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
+  "Box standings are determined by points, then by matches won, then by sets won.",
+  "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
+  "Year-long singles points accumulate separately from doubles points and determine the overall annual singles champion.",
+  "Results are self-reported via the website and are subject to committee verification.",
+  "The committee reserves the right to amend or remove any result that appears inaccurate.",
+  "Entry fees are non-refundable once a season has commenced.",
+  "Balls are not provided by the club. Players are responsible for bringing their own balls to each match.",
+  "Contact details (phone number and email) are only shared with other members of your box if you explicitly opt in during registration. You may update your sharing preferences at any time from your Dashboard.",
+];
+
+const RULES_LADIES_SINGLES = [
+  "Entry fee is £10 per player per season.",
+  "The competition is open to female members of Bramhall Park Lawn Tennis Club.",
+  "Players are seeded into ability-matched boxes of 4 or 5 players by the committee at the start of each season, based on their singles ability rating.",
+  "Every player plays exactly 4 matches per season regardless of box size. Boxes of 5 play 5 fixtures with each player sitting out one match. Boxes of 4 play 4 fixtures, with one fixture repeated to ensure equal match counts.",
+  "Each match is a best-of-3 sets singles match played at Bramhall Park LTC.",
+  "Points are awarded as follows: 2 points for a match won, 1 point for winning at least one set but losing the match, 0 points for losing both sets (or a walkover).",
+  "Box standings are determined by points, then by matches won, then by sets won.",
+  "At the end of each season, the top 1–2 players in each box are promoted and the bottom 1–2 are relegated.",
+  "Year-long singles points accumulate separately from doubles points and determine the overall annual singles champion.",
+  "Results are self-reported via the website and are subject to committee verification.",
+  "The committee reserves the right to amend or remove any result that appears inaccurate.",
+  "Entry fees are non-refundable once a season has commenced.",
+  "Balls are not provided by the club. Players are responsible for bringing their own balls to each match.",
+  "Contact details (phone number and email) are only shared with other members of your box if you explicitly opt in during registration. You may update your sharing preferences at any time from your Dashboard.",
+];
+
+const HOW_IT_WORKS_SINGLES = [
+  {
+    icon: CreditCard,
+    title: "Register & Pay",
+    body: "Sign in, enter your display name and singles ability rating, then pay the £10 seasonal entry fee. Your place in the singles box league is confirmed instantly.",
+  },
+  {
+    icon: Users,
+    title: "Get Placed in a Box",
+    body: "The committee seeds players into ability-matched boxes of 4 or 5 players based on your singles ability rating. Every player plays exactly 4 matches per season, regardless of box size.",
+  },
+  {
+    icon: RefreshCw,
+    title: "Play Your System-Generated Fixtures",
+    body: "The system automatically generates your singles fixture schedule — a round-robin where you face every other player in your box.",
+  },
+  {
+    icon: BarChart3,
+    title: "Report Results & Earn Points",
+    body: "Log match results in your dashboard. Win a match and earn 2 points; win at least one set but lose the match and earn 1 point; lose both sets and earn 0 points.",
+  },
+  {
+    icon: ArrowUpDown,
+    title: "Promotion & Relegation",
+    body: "At the end of each season, the top players in each box are promoted and the bottom players are relegated. New season, new challenge.",
+  },
+  {
+    icon: Trophy,
+    title: "Compete for Year-Long Honours",
+    body: "Singles points accumulate separately across all seasons into a year-long singles table — with its own annual champion and awards.",
+  },
+];
+
 const AWARDS = [
   {
     icon: Trophy,
@@ -149,15 +225,18 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
-  const [division, setDivision] = useState<Division>("mens");
+  const [activeTab, setActiveTab] = useState<Tab>(TABS[0]);
   const heroRef = useFadeUp();
   const howRef = useFadeUp();
   const seasonsRef = useFadeUp();
   const rulesRef = useFadeUp();
   const awardsRef = useFadeUp();
 
-  const { data: allSeasons } = trpc.tournament.seasons.useQuery({ division });
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
+  const division = activeTab.division;
+  const format = activeTab.format;
+
+  const { data: allSeasons } = trpc.tournament.seasons.useQuery({ division, format });
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division, format });
 
   const STATUS_ORDER: Record<string, number> = { active: 0, registration: 1, upcoming: 2 };
   const visibleSeasons = useMemo(() => {
@@ -172,47 +251,46 @@ export default function Home() {
   }, [allSeasons]);
 
   const currentSeasonName = currentSeason?.name ?? null;
+  const isSingles = format === "singles";
   const isMens = division === "mens";
   const divisionLabel = isMens ? "Men's" : "Ladies'";
-  const RULES = isMens ? RULES_MENS : RULES_LADIES;
+  const formatLabel = isSingles ? "Singles" : "Doubles";
+  const HOW_IT_WORKS = isSingles ? HOW_IT_WORKS_SINGLES : HOW_IT_WORKS_DOUBLES;
+  const RULES = isSingles
+    ? (isMens ? RULES_MENS_SINGLES : RULES_LADIES_SINGLES)
+    : (isMens ? RULES_MENS : RULES_LADIES);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--cream)" }}>
       <TournamentNav />
 
-      {/* Division Toggle */}
+      {/* Division / Format Toggle */}
       <div
         className="sticky top-0 z-40 border-b"
         style={{ background: "var(--green-deep)", borderColor: "rgba(255,255,255,0.12)" }}
       >
-        <div className="container flex items-center justify-center gap-2 py-3">
+        <div className="container flex items-center justify-center flex-wrap gap-2 py-3">
           <span className="text-xs font-semibold mr-2" style={{ color: "rgba(250,246,238,0.6)", fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "0.08em" }}>
             COMPETITION
           </span>
-          <button
-            onClick={() => setDivision("mens")}
-            className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all"
-            style={{
-              background: isMens ? "var(--gold)" : "transparent",
-              color: isMens ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
-              border: isMens ? "none" : "1px solid rgba(250,246,238,0.3)",
-              fontFamily: "'Space Grotesk', sans-serif",
-            }}
-          >
-            Men's
-          </button>
-          <button
-            onClick={() => setDivision("ladies")}
-            className="px-5 py-1.5 rounded-full text-sm font-semibold transition-all"
-            style={{
-              background: !isMens ? "var(--gold)" : "transparent",
-              color: !isMens ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
-              border: !isMens ? "none" : "1px solid rgba(250,246,238,0.3)",
-              fontFamily: "'Space Grotesk', sans-serif",
-            }}
-          >
-            Ladies'
-          </button>
+          {TABS.map((tab) => {
+            const isActive = activeTab.division === tab.division && activeTab.format === tab.format;
+            return (
+              <button
+                key={tab.label}
+                onClick={() => setActiveTab(tab)}
+                className="px-4 py-1.5 rounded-full text-sm font-semibold transition-all"
+                style={{
+                  background: isActive ? "var(--gold)" : "transparent",
+                  color: isActive ? "var(--green-deep)" : "rgba(250,246,238,0.7)",
+                  border: isActive ? "none" : "1px solid rgba(250,246,238,0.3)",
+                  fontFamily: "'Space Grotesk', sans-serif",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -220,7 +298,7 @@ export default function Home() {
       <header className="relative overflow-hidden" style={{ minHeight: "540px" }}>
         <img
           src={HERO_IMAGE}
-          alt={`${divisionLabel} doubles tennis at Bramhall Park LTC`}
+          alt={`${divisionLabel} ${formatLabel.toLowerCase()} tennis at Bramhall Park LTC`}
           className="absolute inset-0 w-full h-full object-cover"
           style={{ objectPosition: "center 35%" }}
         />
@@ -250,14 +328,16 @@ export default function Home() {
               className="text-5xl md:text-6xl font-bold mb-4 leading-tight"
               style={{ fontFamily: "'Cormorant Garamond', serif", color: "#faf6ee" }}
             >
-              {divisionLabel} Doubles<br />Box League
+              {divisionLabel} {formatLabel}<br />Box League
             </h1>
             <p
               className="text-lg md:text-xl leading-relaxed mb-8"
               style={{ color: "rgba(250,246,238,0.85)", fontFamily: "'Source Sans 3', sans-serif", fontWeight: 300 }}
             >
-              Ability-matched boxes. Maximally varied partners. Promotion and relegation.
-              Compete for the title — and earn points for every match you play. Entry is just £10 per season.
+              {isSingles
+                ? "Ability-matched boxes. Round-robin singles fixtures. Promotion and relegation. Compete for the title — and earn points for every match you play. Entry is just £10 per season."
+                : "Ability-matched boxes. Maximally varied partners. Promotion and relegation. Compete for the title — and earn points for every match you play. Entry is just £10 per season."
+              }
             </p>
             <div className="flex flex-wrap gap-3">
               {isAuthenticated ? (
@@ -387,7 +467,7 @@ export default function Home() {
                 className="label-tag"
                 style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                {divisionLabel} Season Calendar
+                {divisionLabel} {formatLabel} Season Calendar
               </span>
               <h2
                 className="text-4xl font-semibold mt-2"
@@ -402,7 +482,7 @@ export default function Home() {
             </div>
             {visibleSeasons.length === 0 ? (
               <p className="text-center text-sm" style={{ color: "var(--charcoal-mid)" }}>
-                No upcoming {divisionLabel.toLowerCase()} seasons have been scheduled yet. Check back soon.
+                No upcoming {divisionLabel.toLowerCase()} {formatLabel.toLowerCase()} seasons have been scheduled yet. Check back soon.
               </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -512,7 +592,7 @@ export default function Home() {
                 className="label-tag"
                 style={{ color: "var(--gold)", fontFamily: "'Space Grotesk', sans-serif" }}
               >
-                {divisionLabel} Competition Rules
+                {divisionLabel} {formatLabel} Competition Rules
               </span>
               <h2
                 className="text-4xl font-semibold mt-2"
@@ -589,7 +669,7 @@ export default function Home() {
             Bramhall Park Lawn Tennis Club — Est. 1926
           </p>
           <p className="text-xs mt-1" style={{ color: "var(--charcoal-mid)" }}>
-            Centenary Year 2026 · {divisionLabel} Doubles Box League
+            Centenary Year 2026 · {divisionLabel} {formatLabel} Box League
           </p>
           <p className="text-xs mt-2" style={{ color: "var(--charcoal-mid)" }}>
             <Link href="/privacy" className="underline hover:opacity-80" style={{ color: "var(--charcoal-mid)" }}>

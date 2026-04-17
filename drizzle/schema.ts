@@ -88,6 +88,8 @@ export const yearPoints = mysqlTable("year_points", {
   year: int("year").notNull(),
   /** Which competition division these points belong to */
   division: mysqlEnum("division", ["mens", "ladies"]).default("mens").notNull(),
+  /** Which format these points belong to */
+  format: mysqlEnum("format", ["doubles", "singles"]).default("doubles").notNull(),
   totalPoints: int("totalPoints").default(0).notNull(),
   totalMatchesPlayed: int("totalMatchesPlayed").default(0).notNull(),
   totalMatchesWon: int("totalMatchesWon").default(0).notNull(),

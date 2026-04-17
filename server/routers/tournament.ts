@@ -68,16 +68,16 @@ export const tournamentRouter = router({
 
   /** List all seasons, optionally filtered by division */
   seasons: publicProcedure
-    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }).optional())
     .query(async ({ input }) => {
-      return getAllSeasons(input?.division);
+      return getAllSeasons(input?.division, input?.format);
     }),
 
   /** Get the currently open/active season for a division */
   currentSeason: publicProcedure
-    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }).optional())
     .query(async ({ input }) => {
-      return (await getOpenSeason(input?.division)) ?? null;
+      return (await getOpenSeason(input?.division, input?.format)) ?? null;
     }),
 
   // ── Season Entry ────────────────────────────────────────────────────────────
@@ -187,9 +187,9 @@ export const tournamentRouter = router({
 
   /** Year-long accumulator leaderboard */
   yearLeaderboard: publicProcedure
-    .input(z.object({ year: z.number(), division: z.enum(["mens", "ladies"]).optional() }))
+    .input(z.object({ year: z.number(), division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }))
     .query(async ({ input }) => {
-      return getYearLeaderboard(input.year, input.division ?? "mens");
+      return getYearLeaderboard(input.year, input.division ?? "mens", input.format ?? "doubles");
     }),
 
   // ── Boxes ────────────────────────────────────────────────────────────────────
