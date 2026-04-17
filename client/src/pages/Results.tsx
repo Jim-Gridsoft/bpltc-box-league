@@ -29,13 +29,13 @@ interface FixtureShape {
   boxId: number;
   seasonId: number;
   teamAPlayer1: number;
-  teamAPlayer2: number;
+  teamAPlayer2: number | null;
   teamBPlayer1: number;
-  teamBPlayer2: number;
+  teamBPlayer2: number | null;
   teamAPlayer1Name: string;
-  teamAPlayer2Name: string;
+  teamAPlayer2Name: string | null;
   teamBPlayer1Name: string;
-  teamBPlayer2Name: string;
+  teamBPlayer2Name: string | null;
   matchId: number | null;
   /** When true this is a balancer fixture — per-player points eligibility applies */
   isBalancer?: boolean;
@@ -114,9 +114,9 @@ function FixtureCard({ fixture: f, currentUserId, canEdit, onResultSubmitted }: 
     reportMutation.mutate({
       seasonId: f.seasonId,
       boxId: f.boxId,
-      partner1Id: partnerId,
+      partner1Id: partnerId ?? undefined,
       player2Id: opp1Id,
-      partner2Id: opp2Id,
+      partner2Id: opp2Id ?? undefined,
       score: scoreResult.scoreString,
       winner: scoreResult.winner,
       playedAt: new Date(playedAt),
@@ -227,9 +227,9 @@ function FixtureCard({ fixture: f, currentUserId, canEdit, onResultSubmitted }: 
               try { eligibleIds = f.balancerEligiblePlayers ? JSON.parse(f.balancerEligiblePlayers) : []; } catch {}
               const allPlayers = [
                 { id: f.teamAPlayer1, name: f.teamAPlayer1Name },
-                { id: f.teamAPlayer2, name: f.teamAPlayer2Name },
+                ...(f.teamAPlayer2 != null ? [{ id: f.teamAPlayer2, name: f.teamAPlayer2Name ?? '' }] : []),
                 { id: f.teamBPlayer1, name: f.teamBPlayer1Name },
-                { id: f.teamBPlayer2, name: f.teamBPlayer2Name },
+                ...(f.teamBPlayer2 != null ? [{ id: f.teamBPlayer2, name: f.teamBPlayer2Name ?? '' }] : []),
               ];
               const scoringPlayers = allPlayers.filter(p => eligibleIds.includes(p.id));
               const nonScoringPlayers = allPlayers.filter(p => !eligibleIds.includes(p.id));

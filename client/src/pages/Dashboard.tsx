@@ -39,13 +39,13 @@ interface FixtureCardProps {
     boxId: number;
     seasonId: number;
     teamAPlayer1: number;
-    teamAPlayer2: number;
+    teamAPlayer2: number | null;
     teamBPlayer1: number;
-    teamBPlayer2: number;
+    teamBPlayer2: number | null;
     teamAPlayer1Name: string;
-    teamAPlayer2Name: string;
+    teamAPlayer2Name: string | null;
     teamBPlayer1Name: string;
-    teamBPlayer2Name: string;
+    teamBPlayer2Name: string | null;
     /** When true this is a balancer fixture — per-player points eligibility applies */
     isBalancer?: boolean;
     /**
@@ -63,9 +63,13 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
   const [form, setForm] = useState(defaultResultState);
   const [scoreResult, setScoreResult] = useState<ScoreResult>(defaultScoreResult);
 
-  const iAmTeamA = f.teamAPlayer1 === currentUserId || f.teamAPlayer2 === currentUserId;
+  const isSingles = f.teamAPlayer2 == null;
+  const iAmTeamA = f.teamAPlayer1 === currentUserId || (f.teamAPlayer2 != null && f.teamAPlayer2 === currentUserId);
 
-  const myPartner = iAmTeamA
+  // For singles: myPartner is null, opponents is just the other player's name
+  const myPartner = isSingles
+    ? null
+    : iAmTeamA
     ? f.teamAPlayer1 === currentUserId
       ? f.teamAPlayer2Name
       : f.teamAPlayer1Name
@@ -73,12 +77,16 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
     ? f.teamBPlayer2Name
     : f.teamBPlayer1Name;
 
-  const opponents = iAmTeamA
-    ? `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name}`
-    : `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name}`;
+  const opponents = isSingles
+    ? (iAmTeamA ? f.teamBPlayer1Name : f.teamAPlayer1Name)
+    : iAmTeamA
+    ? `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name ?? ''}`
+    : `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name ?? ''}`;
 
   // IDs needed for the mutation
-  const partnerId = iAmTeamA
+  const partnerId = isSingles
+    ? null
+    : iAmTeamA
     ? f.teamAPlayer1 === currentUserId
       ? f.teamAPlayer2
       : f.teamAPlayer1
@@ -87,7 +95,7 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
     : f.teamBPlayer1;
 
   const opp1Id = iAmTeamA ? f.teamBPlayer1 : f.teamAPlayer1;
-  const opp2Id = iAmTeamA ? f.teamBPlayer2 : f.teamAPlayer2;
+  const opp2Id = isSingles ? null : (iAmTeamA ? f.teamBPlayer2 : f.teamAPlayer2);
 
   const utils = trpc.useUtils();
   const reportMutation = trpc.tournament.reportMatch.useMutation({
@@ -120,9 +128,9 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
     reportMutation.mutate({
       seasonId: f.seasonId,
       boxId: f.boxId,
-      partner1Id: partnerId,
+      partner1Id: partnerId ?? undefined,
       player2Id: opp1Id,
-      partner2Id: opp2Id,
+      partner2Id: opp2Id ?? undefined,
       score: scoreResult.scoreString,
       winner: scoreResult.winner,
       playedAt: new Date(form.playedAt),
@@ -150,15 +158,19 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
       {/* Summary row */}
       <div className="flex items-start justify-between gap-4 p-4">
         <div className="space-y-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <Users className="w-4 h-4 text-[#1b4332] flex-shrink-0" />
-            <span className="text-sm font-medium text-gray-800 truncate">
-              Partner: <strong>{myPartner}</strong>
-            </span>
-          </div>
+          {!isSingles && myPartner && (
+            <div className="flex items-center gap-2">
+              <Users className="w-4 h-4 text-[#1b4332] flex-shrink-0" />
+              <span className="text-sm font-medium text-gray-800 truncate">
+                Partner: <strong>{myPartner}</strong>
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-600 truncate">vs {opponents}</span>
+            <span className="text-sm text-gray-600 truncate">
+              {isSingles ? <><strong>vs</strong> {opponents}</> : <>vs {opponents}</>}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -208,9 +220,9 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
             try { eligibleIds = f.balancerEligiblePlayers ? JSON.parse(f.balancerEligiblePlayers) : []; } catch {}
             const allPlayers = [
               { id: f.teamAPlayer1, name: f.teamAPlayer1Name },
-              { id: f.teamAPlayer2, name: f.teamAPlayer2Name },
+              ...(f.teamAPlayer2 != null ? [{ id: f.teamAPlayer2, name: f.teamAPlayer2Name ?? '' }] : []),
               { id: f.teamBPlayer1, name: f.teamBPlayer1Name },
-              { id: f.teamBPlayer2, name: f.teamBPlayer2Name },
+              ...(f.teamBPlayer2 != null ? [{ id: f.teamBPlayer2, name: f.teamBPlayer2Name ?? '' }] : []),
             ];
             const scoringPlayers = allPlayers.filter(p => eligibleIds.includes(p.id));
             const nonScoringPlayers = allPlayers.filter(p => !eligibleIds.includes(p.id));
@@ -463,7 +475,8 @@ export default function Dashboard() {
                 <p className={`font-bold text-sm ${
                   activeSeason?.division === "ladies" ? "text-pink-800" : "text-blue-800"
                 }`}>
-                  This is the <span className="uppercase">{activeSeason?.division === "ladies" ? "Ladies'" : "Men's"}</span> division
+                  This is the <span className="uppercase">{activeSeason?.division === "ladies" ? "Ladies'" : "Men's"}</span>{" "}
+                  <span className="uppercase">{(activeSeason as any)?.format === "singles" ? "Singles" : "Doubles"}</span> division
                 </p>
                 <p className={`text-xs mt-0.5 ${
                   activeSeason?.division === "ladies" ? "text-pink-700" : "text-blue-700"
@@ -488,7 +501,7 @@ export default function Dashboard() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Ability Rating (1-5)
+                  {(activeSeason as any)?.format === "singles" ? "Singles" : "Doubles"} Ability Rating (1-5)
                 </label>
                 <select
                   value={regAbility}
@@ -502,8 +515,9 @@ export default function Dashboard() {
                   <option value={5}>5 - County / Elite</option>
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
-                  Used to seed you into an ability-matched box. Be honest — you will enjoy the
-                  competition more when playing at the right level.
+                  {(activeSeason as any)?.format === "singles"
+                    ? "Your singles ability rating — used to seed you into an ability-matched box. This is separate from your doubles rating."
+                    : "Used to seed you into an ability-matched box. Be honest — you will enjoy the competition more when playing at the right level."}
                 </p>
               </div>
               <div>

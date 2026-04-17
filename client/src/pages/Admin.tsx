@@ -40,6 +40,7 @@ export default function Admin() {
   const [newSeasonYear, setNewSeasonYear] = useState(2026);
   const [newSeasonQuarter, setNewSeasonQuarter] = useState<"spring" | "summer" | "autumn" | "winter">("spring");
   const [newSeasonDivision, setNewSeasonDivision] = useState<"mens" | "ladies">("mens");
+  const [newSeasonFormat, setNewSeasonFormat] = useState<"doubles" | "singles">("doubles");
   const [newSeasonStart, setNewSeasonStart] = useState("");
   const [newSeasonEnd, setNewSeasonEnd] = useState("");
   const [newSeasonDeadline, setNewSeasonDeadline] = useState("");
@@ -712,6 +713,14 @@ export default function Admin() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Format</label>
+                  <select value={newSeasonFormat} onChange={(e) => setNewSeasonFormat(e.target.value as "doubles" | "singles")}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]">
+                    <option value="doubles">Doubles</option>
+                    <option value="singles">Singles</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Registration Deadline</label>
                   <input type="date" value={newSeasonDeadline} onChange={(e) => setNewSeasonDeadline(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4332]" />
@@ -733,6 +742,7 @@ export default function Admin() {
                   year: newSeasonYear,
                   quarter: newSeasonQuarter,
                   division: newSeasonDivision,
+                  format: newSeasonFormat,
                   startDate: new Date(newSeasonStart),
                   endDate: new Date(newSeasonEnd),
                   registrationDeadline: new Date(newSeasonDeadline),
@@ -1622,7 +1632,7 @@ function AdminFixtureEntry({
                         {fixture.isBalancer && (() => {
                           let eligibleIds: number[] = [];
                           try { eligibleIds = fixture.isBalancer && (fixture as any).balancerEligiblePlayers ? JSON.parse((fixture as any).balancerEligiblePlayers) : []; } catch {}
-                          const allInvolved = [fixture.teamAPlayer1, fixture.teamAPlayer2, fixture.teamBPlayer1, fixture.teamBPlayer2];
+                          const allInvolved = [fixture.teamAPlayer1, fixture.teamAPlayer2, fixture.teamBPlayer1, fixture.teamBPlayer2].filter((id): id is number => id != null);
                           const allEligible = allInvolved.every(id => eligibleIds.includes(id));
                           return (
                             <span className="text-xs bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-medium">
@@ -1665,9 +1675,9 @@ function AdminFixtureEntry({
                             try { eligibleIds = (fixture as any).balancerEligiblePlayers ? JSON.parse((fixture as any).balancerEligiblePlayers) : []; } catch {}
                             const allPlayers = [
                               { id: fixture.teamAPlayer1, name: fixture.teamAPlayer1Name },
-                              { id: fixture.teamAPlayer2, name: fixture.teamAPlayer2Name },
+                              ...(fixture.teamAPlayer2 != null ? [{ id: fixture.teamAPlayer2, name: fixture.teamAPlayer2Name ?? '' }] : []),
                               { id: fixture.teamBPlayer1, name: fixture.teamBPlayer1Name },
-                              { id: fixture.teamBPlayer2, name: fixture.teamBPlayer2Name },
+                              ...(fixture.teamBPlayer2 != null ? [{ id: fixture.teamBPlayer2, name: fixture.teamBPlayer2Name ?? '' }] : []),
                             ];
                             const scoringPlayers = allPlayers.filter(p => eligibleIds.includes(p.id));
                             const nonScoringPlayers = allPlayers.filter(p => !eligibleIds.includes(p.id));
@@ -1743,9 +1753,9 @@ function AdminFixtureEntry({
                                   boxId: box.boxId,
                                   fixtureId: fixture.id,
                                   player1Id: fixture.teamAPlayer1,
-                                  partner1Id: fixture.teamAPlayer2,
+                                  partner1Id: fixture.teamAPlayer2 ?? undefined,
                                   player2Id: fixture.teamBPlayer1,
-                                  partner2Id: fixture.teamBPlayer2,
+                                  partner2Id: fixture.teamBPlayer2 ?? undefined,
                                   score: scoreResult.scoreString,
                                   winner: scoreResult.winner,
                                   playedAt: new Date(playedAt),

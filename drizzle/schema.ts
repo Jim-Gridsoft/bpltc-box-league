@@ -42,6 +42,8 @@ export const seasons = mysqlTable("seasons", {
     .notNull(),
   /** Which competition this season belongs to */
   division: mysqlEnum("division", ["mens", "ladies"]).default("mens").notNull(),
+  /** Whether this is a singles or doubles competition */
+  format: mysqlEnum("format", ["singles", "doubles"]).default("doubles").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -136,12 +138,12 @@ export const matches = mysqlTable("matches", {
   seasonId: int("seasonId").notNull(),
   /** Team A — player who reported the match */
   player1Id: int("player1Id").notNull(),
-  /** Team A — player1's partner */
-  partner1Id: int("partner1Id").notNull(),
+  /** Team A — player1's partner (null for singles) */
+  partner1Id: int("partner1Id"),
   /** Team B */
   player2Id: int("player2Id").notNull(),
-  /** Team B — player2's partner */
-  partner2Id: int("partner2Id").notNull(),
+  /** Team B — player2's partner (null for singles) */
+  partner2Id: int("partner2Id"),
   /** Score string, e.g. "6-3, 4-6, 10-8" */
   score: varchar("score", { length: 64 }).notNull(),
   /** Which team won: "A" or "B" */
@@ -183,12 +185,12 @@ export const fixtures = mysqlTable("fixtures", {
   round: int("round").notNull(),
   /** Team A player 1 (userId) */
   teamAPlayer1: int("teamAPlayer1").notNull(),
-  /** Team A player 2 (userId) */
-  teamAPlayer2: int("teamAPlayer2").notNull(),
+  /** Team A player 2 (userId) — null for singles fixtures */
+  teamAPlayer2: int("teamAPlayer2"),
   /** Team B player 1 (userId) */
   teamBPlayer1: int("teamBPlayer1").notNull(),
-  /** Team B player 2 (userId) */
-  teamBPlayer2: int("teamBPlayer2").notNull(),
+  /** Team B player 2 (userId) — null for singles fixtures */
+  teamBPlayer2: int("teamBPlayer2"),
   /** Linked match result once played */
   matchId: int("matchId"),
   status: mysqlEnum("status", ["scheduled", "played", "cancelled"]).default("scheduled").notNull(),

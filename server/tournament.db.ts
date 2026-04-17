@@ -110,9 +110,9 @@ export async function deleteSeason(seasonId: number) {
   const affectedUserIds = new Set<number>();
   for (const m of seasonMatches) {
     affectedUserIds.add(m.player1Id);
-    affectedUserIds.add(m.partner1Id);
+    if (m.partner1Id != null) affectedUserIds.add(m.partner1Id);
     affectedUserIds.add(m.player2Id);
-    affectedUserIds.add(m.partner2Id);
+    if (m.partner2Id != null) affectedUserIds.add(m.partner2Id);
   }
 
   // 2b. Delete matches for this season
@@ -487,9 +487,9 @@ export async function getAllMatchesBySeason(seasonId: number) {
   const allUserIds = new Set<number>();
   for (const m of rows) {
     allUserIds.add(m.player1Id);
-    allUserIds.add(m.partner1Id);
+    if (m.partner1Id != null) allUserIds.add(m.partner1Id);
     allUserIds.add(m.player2Id);
-    allUserIds.add(m.partner2Id);
+    if (m.partner2Id != null) allUserIds.add(m.partner2Id);
   }
   const userRows = await db
     .select({ id: users.id, name: users.name })
@@ -500,9 +500,9 @@ export async function getAllMatchesBySeason(seasonId: number) {
   return rows.map((m) => ({
     ...m,
     player1Name: nameMap.get(m.player1Id) ?? "Unknown",
-    partner1Name: nameMap.get(m.partner1Id) ?? "Unknown",
+    partner1Name: m.partner1Id != null ? (nameMap.get(m.partner1Id) ?? "Unknown") : null,
     player2Name: nameMap.get(m.player2Id) ?? "Unknown",
-    partner2Name: nameMap.get(m.partner2Id) ?? "Unknown",
+    partner2Name: m.partner2Id != null ? (nameMap.get(m.partner2Id) ?? "Unknown") : null,
   }));
 }
 
@@ -574,8 +574,8 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const scoreStats = countScoreStats(data.score ?? null);
   const setsWon = { teamA: scoreStats.setsA, teamB: scoreStats.setsB };
 
-  const teamA = [data.player1Id, data.partner1Id];
-  const teamB = [data.player2Id, data.partner2Id];
+  const teamA = [data.player1Id, data.partner1Id].filter((id): id is number => id != null);
+  const teamB = [data.player2Id, data.partner2Id].filter((id): id is number => id != null);
 
   for (const userId of teamA) {
     const entrant = await db
@@ -651,8 +651,8 @@ export async function deleteMatch(matchId: number) {
 
   await db.delete(matches).where(eq(matches.id, matchId));
 
-  // Recalculate season points for all four players from remaining matches
-  const allPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id];
+  // Recalculate season points for all players from remaining matches
+  const allPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter((id): id is number => id != null);
   for (const userId of allPlayers) {
     const entrant = await db
       .select()
@@ -674,12 +674,13 @@ export async function deleteMatch(matchId: number) {
         x.partner2Id === userId
     );
 
+
     let pts = 0;
     let won = 0;
     let gw = 0;
     let gl = 0;
     for (const um of userMatches) {
-      const onTeamA = um.player1Id === userId || um.partner1Id === userId;
+      const onTeamA = um.player1Id === userId || (um.partner1Id != null && um.partner1Id === userId);
       const userWon = (onTeamA && um.winner === "A") || (!onTeamA && um.winner === "B");
       // Count games won and lost by this user's team
       if (um.score) {
@@ -1172,6 +1173,11 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Determine season format to choose the right schedule builder
+  const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
+  const season = seasonRows[0];
+  const isSingles = season?.format === "singles";
+
   const seasonBoxes = await db
     .select()
     .from(boxes)
@@ -1195,30 +1201,47 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
       .where(eq(boxMembers.boxId, box.id));
 
     const playerIds = members.map((m) => m.userId).filter((id): id is number => id !== null);
-    if (playerIds.length < 4) continue;
 
-    await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
-
-    const scheduled = buildBalancedSchedule(playerIds);
-    const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
-      boxId: box.id,
-      seasonId,
-      round: f.round,
-      teamAPlayer1: f.teamA[0],
-      teamAPlayer2: f.teamA[1],
-      teamBPlayer1: f.teamB[0],
-      teamBPlayer2: f.teamB[1],
-      status: "scheduled" as const,
-      isBalancer: f.isBalancer,
-      // Persist eligible player IDs as a JSON string (null for non-balancer fixtures)
-      balancerEligiblePlayers: f.isBalancer
-        ? JSON.stringify(f.balancerEligiblePlayers)
-        : null,
-    }));
-
-    if (fixtureRows.length > 0) {
-      await db.insert(fixtures).values(fixtureRows);
-      totalFixtures += fixtureRows.length;
+    if (isSingles) {
+      if (playerIds.length < 2) continue;
+      await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+      const scheduled = buildSinglesSchedule(playerIds);
+      const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
+        boxId: box.id,
+        seasonId,
+        round: f.round,
+        teamAPlayer1: f.playerA,
+        teamAPlayer2: null,
+        teamBPlayer1: f.playerB,
+        teamBPlayer2: null,
+        status: "scheduled" as const,
+        isBalancer: f.isBalancer,
+        balancerEligiblePlayers: f.isBalancer ? JSON.stringify(f.balancerEligiblePlayers) : null,
+      }));
+      if (fixtureRows.length > 0) {
+        await db.insert(fixtures).values(fixtureRows);
+        totalFixtures += fixtureRows.length;
+      }
+    } else {
+      if (playerIds.length < 4) continue;
+      await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+      const scheduled = buildBalancedSchedule(playerIds);
+      const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
+        boxId: box.id,
+        seasonId,
+        round: f.round,
+        teamAPlayer1: f.teamA[0],
+        teamAPlayer2: f.teamA[1],
+        teamBPlayer1: f.teamB[0],
+        teamBPlayer2: f.teamB[1],
+        status: "scheduled" as const,
+        isBalancer: f.isBalancer,
+        balancerEligiblePlayers: f.isBalancer ? JSON.stringify(f.balancerEligiblePlayers) : null,
+      }));
+      if (fixtureRows.length > 0) {
+        await db.insert(fixtures).values(fixtureRows);
+        totalFixtures += fixtureRows.length;
+      }
     }
   }
 
@@ -1386,6 +1409,125 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   return scheduled;
 }
 
+// ── Singles schedule builder (pure function, no DB access) ──────────────────
+
+interface SinglesFixture {
+  playerA: number;
+  playerB: number;
+  round: number;
+  isBalancer: boolean;
+  balancerEligiblePlayers: number[];
+}
+
+/**
+ * Build a round-robin singles schedule for a set of player IDs.
+ * Target: every player plays exactly 4 matches.
+ *
+ * For n players:
+ *  - Box of 4: C(4,2) = 6 unique pairs. Target 4 means 4 fixtures, each player plays 3 unique + 1 repeat.
+ *  - Box of 5: C(5,2) = 10 unique pairs. Each player plays 4 others = 4 unique matches. Perfect.
+ *
+ * Algorithm:
+ *  - Generate all C(n,2) unique 1v1 pairings.
+ *  - Greedily schedule fixtures round by round, keeping each player to at most 1 match per round.
+ *  - Stop when every player has reached the target of 4 matches.
+ *  - If unique pairings are exhausted before target is reached, add repeats (lowest-penalty first).
+ */
+export function buildSinglesSchedule(playerIds: number[]): SinglesFixture[] {
+  const n = playerIds.length;
+  if (n < 2) return [];
+
+  const target = 4; // target matches per player
+
+  // Generate all unique 1v1 pairings
+  const allPairs: { playerA: number; playerB: number }[] = [];
+  for (let a = 0; a < n; a++)
+    for (let b = a + 1; b < n; b++)
+      allPairs.push({ playerA: playerIds[a], playerB: playerIds[b] });
+
+  const matchCount: Record<number, number> = {};
+  const opponentCount: Record<string, number> = {};
+  playerIds.forEach((p) => (matchCount[p] = 0));
+
+  const pk = (x: number, y: number) => `${Math.min(x, y)}-${Math.max(x, y)}`;
+  const getO = (a: number, b: number) => opponentCount[pk(a, b)] ?? 0;
+  const scorePair = (p: { playerA: number; playerB: number }) => getO(p.playerA, p.playerB);
+
+  const updateCounts = (p: { playerA: number; playerB: number }) => {
+    matchCount[p.playerA]++;
+    matchCount[p.playerB]++;
+    opponentCount[pk(p.playerA, p.playerB)] = (opponentCount[pk(p.playerA, p.playerB)] ?? 0) + 1;
+  };
+
+  const scheduled: SinglesFixture[] = [];
+  const usedIndices = new Set<number>();
+  let round = 1;
+
+  // Phase 1: schedule unique pairs until target or unique pairs exhausted
+  while (true) {
+    if (playerIds.every((p) => matchCount[p] >= target)) break;
+
+    const inRound = new Set<number>();
+    let addedInRound = false;
+
+    const candidates = allPairs
+      .map((p, i) => ({ p, i, score: scorePair(p), matchSum: matchCount[p.playerA] + matchCount[p.playerB] }))
+      .filter(({ i }) => !usedIndices.has(i))
+      .sort((a, b) => a.score - b.score || a.matchSum - b.matchSum);
+
+    for (const { p, i } of candidates) {
+      if (inRound.has(p.playerA) || inRound.has(p.playerB)) continue;
+      if (matchCount[p.playerA] >= target && matchCount[p.playerB] >= target) continue;
+
+      inRound.add(p.playerA);
+      inRound.add(p.playerB);
+      scheduled.push({ ...p, round, isBalancer: false, balancerEligiblePlayers: [] });
+      usedIndices.add(i);
+      updateCounts(p);
+      addedInRound = true;
+    }
+
+    if (!addedInRound) break;
+    round++;
+  }
+
+  // Phase 2: top-up with repeats until everyone reaches target
+  let safetyLimit = 200;
+  while (safetyLimit-- > 0) {
+    const counts = Object.values(matchCount) as number[];
+    const minCount = Math.min(...counts);
+    const maxCount = Math.max(...counts);
+    if (minCount >= target) break;
+
+    const needMore = playerIds.filter((p) => matchCount[p] < target);
+    if (needMore.length === 0) break;
+
+    const bothNeed = allPairs
+      .map((p, i) => ({ p, i, score: scorePair(p) }))
+      .filter(({ p }) => needMore.includes(p.playerA) && needMore.includes(p.playerB))
+      .sort((a, b) => a.score - b.score);
+
+    const oneNeeds = allPairs
+      .map((p, i) => ({ p, i, score: scorePair(p) }))
+      .filter(({ p }) => needMore.includes(p.playerA) || needMore.includes(p.playerB))
+      .sort((a, b) => a.score - b.score);
+
+    const chosen = (bothNeed.length > 0 ? bothNeed : oneNeeds)[0];
+    if (!chosen) break;
+
+    const isBalancer = maxCount > minCount;
+    const eligiblePlayers = isBalancer
+      ? [chosen.p.playerA, chosen.p.playerB].filter((p) => matchCount[p] < maxCount)
+      : [];
+
+    scheduled.push({ ...chosen.p, round, isBalancer, balancerEligiblePlayers: eligiblePlayers });
+    updateCounts(chosen.p);
+    round++;
+  }
+
+  return scheduled;
+}
+
 /**
  * Get all fixtures for a box, with player display names resolved.
  */
@@ -1403,9 +1545,9 @@ export async function getFixturesByBox(boxId: number) {
   const allUserIds = new Set<number>();
   for (const f of rows) {
     allUserIds.add(f.teamAPlayer1);
-    allUserIds.add(f.teamAPlayer2);
+    if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
     allUserIds.add(f.teamBPlayer1);
-    allUserIds.add(f.teamBPlayer2);
+    if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
   }
 
   const userRows = await db
@@ -1418,9 +1560,9 @@ export async function getFixturesByBox(boxId: number) {
   return rows.map((f) => ({
     ...f,
     teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
     teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+    teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
   }));
 }
 
@@ -1451,9 +1593,9 @@ export async function getMyFixtures(userId: number, seasonId: number) {
   const allUserIds = new Set<number>();
   for (const f of rows) {
     allUserIds.add(f.teamAPlayer1);
-    allUserIds.add(f.teamAPlayer2);
+    if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
     allUserIds.add(f.teamBPlayer1);
-    allUserIds.add(f.teamBPlayer2);
+    if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
   }
 
   const userRows = await db
@@ -1466,9 +1608,9 @@ export async function getMyFixtures(userId: number, seasonId: number) {
   return rows.map((f) => ({
     ...f,
     teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
     teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+    teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
   }));
 }
 
@@ -1630,18 +1772,18 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
       round: number;
       status: string;
       teamAPlayer1: number;
-      teamAPlayer2: number;
+      teamAPlayer2: number | null;
       teamBPlayer1: number;
-      teamBPlayer2: number;
+      teamBPlayer2: number | null;
       teamAPlayer1Name: string;
-      teamAPlayer2Name: string;
+      teamAPlayer2Name: string | null;
       teamBPlayer1Name: string;
-      teamBPlayer2Name: string;
+      teamBPlayer2Name: string | null;
       // entrant IDs (needed for reportMatch)
       teamAEntrant1: number;
-      teamAEntrant2: number;
+      teamAEntrant2: number | null;
       teamBEntrant1: number;
-      teamBEntrant2: number;
+      teamBEntrant2: number | null;
       /** True if this is a balancer fixture — 0 points awarded */
       isBalancer: boolean;
     }[];
@@ -1675,9 +1817,9 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
     const allUserIds = new Set<number>();
     for (const f of rows) {
       allUserIds.add(f.teamAPlayer1);
-      allUserIds.add(f.teamAPlayer2);
+      if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
       allUserIds.add(f.teamBPlayer1);
-      allUserIds.add(f.teamBPlayer2);
+      if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
     }
 
     const userRows = await db
@@ -1712,13 +1854,13 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
         teamBPlayer1: f.teamBPlayer1,
         teamBPlayer2: f.teamBPlayer2,
         teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-        teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+        teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
         teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-        teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+        teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
         teamAEntrant1: entrantMap.get(f.teamAPlayer1) ?? 0,
-        teamAEntrant2: entrantMap.get(f.teamAPlayer2) ?? 0,
+        teamAEntrant2: f.teamAPlayer2 != null ? (entrantMap.get(f.teamAPlayer2) ?? 0) : null,
         teamBEntrant1: entrantMap.get(f.teamBPlayer1) ?? 0,
-        teamBEntrant2: entrantMap.get(f.teamBPlayer2) ?? 0,
+        teamBEntrant2: f.teamBPlayer2 != null ? (entrantMap.get(f.teamBPlayer2) ?? 0) : null,
         isBalancer: f.isBalancer,
       })),
     });
@@ -1793,7 +1935,7 @@ export async function getFixtureBalanceSummary(seasonId: number): Promise<
   // Count appearances per player
   const countMap: Record<number, { total: number; balancer: number }> = {};
   for (const f of allFixtures) {
-    const players = [f.teamAPlayer1, f.teamAPlayer2, f.teamBPlayer1, f.teamBPlayer2];
+    const players = [f.teamAPlayer1, f.teamAPlayer2, f.teamBPlayer1, f.teamBPlayer2].filter((id): id is number => id != null);
     for (const pid of players) {
       if (!countMap[pid]) countMap[pid] = { total: 0, balancer: 0 };
       countMap[pid].total++;
@@ -1852,22 +1994,30 @@ export async function buildFixtureScheduleSummary(seasonId: number): Promise<
 
   for (const box of allBoxes) {
     for (const f of box.fixtures) {
-      const teams: [number, number, string, string, string, string][] = [
-        // [playerId, partnerId, partnerName, opp1, opp2, isBalancer]
-        [f.teamAPlayer1, f.teamAPlayer2, f.teamAPlayer2Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
-        [f.teamAPlayer2, f.teamAPlayer1, f.teamAPlayer1Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
-        [f.teamBPlayer1, f.teamBPlayer2, f.teamBPlayer2Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
-        [f.teamBPlayer2, f.teamBPlayer1, f.teamBPlayer1Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
-      ];
+      // Build per-player entries — singles fixtures have null for player2 slots
+      const isSingles = f.teamAPlayer2 == null;
+      const isBalStr = String(f.isBalancer);
 
-      for (const [pid, , partnerName, opp1, opp2, isBalStr] of teams) {
+      const teams: [number, string | null, string, string][] = isSingles
+        ? [
+            [f.teamAPlayer1, null, f.teamBPlayer1Name, isBalStr],
+            [f.teamBPlayer1, null, f.teamAPlayer1Name, isBalStr],
+          ]
+        : [
+            [f.teamAPlayer1, f.teamAPlayer2Name, `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name ?? ''}`, isBalStr],
+            [f.teamAPlayer2!, f.teamAPlayer1Name, `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name ?? ''}`, isBalStr],
+            [f.teamBPlayer1, f.teamBPlayer2Name, `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name ?? ''}`, isBalStr],
+            [f.teamBPlayer2!, f.teamBPlayer1Name, `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name ?? ''}`, isBalStr],
+          ];
+
+      for (const [pid, partnerName, opponents, isBalStrEntry] of teams) {
         if (!playerMap[pid]) {
           // Determine player name from the fixture
           const names: Record<number, string> = {
             [f.teamAPlayer1]: f.teamAPlayer1Name,
-            [f.teamAPlayer2]: f.teamAPlayer2Name,
             [f.teamBPlayer1]: f.teamBPlayer1Name,
-            [f.teamBPlayer2]: f.teamBPlayer2Name,
+            ...(f.teamAPlayer2 != null ? { [f.teamAPlayer2]: f.teamAPlayer2Name ?? 'Unknown' } : {}),
+            ...(f.teamBPlayer2 != null ? { [f.teamBPlayer2]: f.teamBPlayer2Name ?? 'Unknown' } : {}),
           };
           playerMap[pid] = {
             playerId: pid,
@@ -1878,9 +2028,9 @@ export async function buildFixtureScheduleSummary(seasonId: number): Promise<
         }
         playerMap[pid].fixtures.push({
           round: f.round,
-          partner: partnerName,
-          opponents: `${opp1} & ${opp2}`,
-          isBalancer: isBalStr === "true",
+          partner: partnerName ?? 'Singles',
+          opponents,
+          isBalancer: isBalStrEntry === "true",
         });
       }
     }
@@ -1954,11 +2104,11 @@ export async function removePlayerFromSeason(
 
   for (const m of playerMatches) {
     const otherPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter(
-      (pid) => pid !== userId
+      (pid): pid is number => pid != null && pid !== userId
     );
 
     // Reverse year_points for the removed player for this match
-    const onTeamA = m.player1Id === userId || m.partner1Id === userId;
+    const onTeamA = m.player1Id === userId || (m.partner1Id != null && m.partner1Id === userId);
     const playerWon = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
     let playerPts = 0;
     if (playerWon) {
@@ -2015,9 +2165,9 @@ export async function removePlayerFromSeason(
             x.partner2Id === pid) &&
           // Exclude matches that are about to be deleted (those involving the removed player)
           x.player1Id !== userId &&
-          x.partner1Id !== userId &&
+          (x.partner1Id == null || x.partner1Id !== userId) &&
           x.player2Id !== userId &&
-          x.partner2Id !== userId
+          (x.partner2Id == null || x.partner2Id !== userId)
       );
 
       let pts = 0;
