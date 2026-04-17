@@ -308,10 +308,22 @@ function FixtureCard({ fixture: f, currentUserId, canEdit, onResultSubmitted }: 
 export default function Results() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [seasonId, setSeasonId] = useState<number | null>(null);
-  const [division, setDivision] = useState<"mens" | "ladies">("mens");
 
-  const { data: seasons } = trpc.tournament.seasons.useQuery({ division });
-  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division });
+  type Division = "mens" | "ladies";
+  type Format = "doubles" | "singles";
+  type Tab = { division: Division; format: Format; label: string };
+  const TABS: Tab[] = [
+    { division: "mens", format: "doubles", label: "Men's Doubles" },
+    { division: "ladies", format: "doubles", label: "Ladies' Doubles" },
+    { division: "mens", format: "singles", label: "Men's Singles" },
+    { division: "ladies", format: "singles", label: "Ladies' Singles" },
+  ];
+  const [activeTab, setActiveTab] = useState<Tab>(TABS[0]);
+  const division = activeTab.division;
+  const format = activeTab.format;
+
+  const { data: seasons } = trpc.tournament.seasons.useQuery({ division, format });
+  const { data: currentSeason } = trpc.tournament.currentSeason.useQuery({ division, format });
 
   const activeSeason = useMemo(() => {
     if (seasonId) return seasons?.find((s) => s.id === seasonId) ?? currentSeason;
@@ -418,22 +430,22 @@ export default function Results() {
 
       <div className="bg-[#1b4332] text-white py-10 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="flex gap-2 mb-3">
-            <button
-              onClick={() => { setDivision("mens"); setSeasonId(null); }}
-              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all ${
-                division === "mens" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
-              }`}
-            >Men's</button>
-            <button
-              onClick={() => { setDivision("ladies"); setSeasonId(null); }}
-              className={`px-4 py-1 rounded-full text-xs font-semibold transition-all ${
-                division === "ladies" ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
-              }`}
-            >Ladies'</button>
+          <div className="flex gap-2 flex-wrap mb-3">
+            {TABS.map((tab) => {
+              const isActive = activeTab.division === tab.division && activeTab.format === tab.format;
+              return (
+                <button
+                  key={tab.label}
+                  onClick={() => { setActiveTab(tab); setSeasonId(null); }}
+                  className={`px-4 py-1 rounded-full text-xs font-semibold transition-all ${
+                    isActive ? "bg-[#c9a84c] text-[#1b4332]" : "bg-white/10 text-green-200 hover:bg-white/20"
+                  }`}
+                >{tab.label}</button>
+              );
+            })}
           </div>
           <p className="text-green-300 text-sm mb-1">
-            {activeSeason?.name ?? `BPLTC ${division === "mens" ? "Men's" : "Ladies'"} Doubles Box League`}
+            {activeSeason?.name ?? `BPLTC ${activeTab.label} Box League`}
           </p>
           <h1 className="font-serif text-3xl font-bold">
             {boxName ? `${boxName} — Fixtures & Results` : "Box Fixtures & Results"}
