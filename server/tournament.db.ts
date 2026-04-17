@@ -1430,111 +1430,144 @@ interface SinglesFixture {
 }
 
 /**
- * Build a round-robin singles schedule for a set of player IDs.
- * Target: every player plays exactly 4 matches.
+ * Build a singles schedule for a set of player IDs.
+ * Target: every player plays exactly 4 matches regardless of box size.
  *
- * For n players:
- *  - Box of 4: C(4,2) = 6 unique pairs. Target 4 means 4 fixtures, each player plays 3 unique + 1 repeat.
- *  - Box of 5: C(5,2) = 10 unique pairs. Each player plays 4 others = 4 unique matches. Perfect.
- *
- * Algorithm:
- *  - Generate all C(n,2) unique 1v1 pairings.
- *  - Greedily schedule fixtures round by round, keeping each player to at most 1 match per round.
- *  - Stop when every player has reached the target of 4 matches.
- *  - If unique pairings are exhausted before target is reached, add repeats (lowest-penalty first).
+ * Box of 4: 8 fixtures = all 6 unique pairs + 2 randomly chosen repeats (most-varied first).
+ *           Each player plays 4 matches, faces every opponent at least once.
+ * Box of 5: 10 fixtures = full round-robin (C(5,2)=10 unique pairs).
+ *           Each player faces every other player exactly once = 4 matches.
+ *           Grouped into 5 rounds of 2 fixtures each using Berger table (1 player sits out per round).
  */
 export function buildSinglesSchedule(playerIds: number[]): SinglesFixture[] {
   const n = playerIds.length;
   if (n < 2) return [];
 
-  const target = 4; // target matches per player
+  // Helper to generate all unique pairs
+  const makePairs = (ids: number[]) => {
+    const pairs: { playerA: number; playerB: number }[] = [];
+    for (let a = 0; a < ids.length; a++)
+      for (let b = a + 1; b < ids.length; b++)
+        pairs.push({ playerA: ids[a], playerB: ids[b] });
+    return pairs;
+  };
 
-  // Generate all unique 1v1 pairings
-  const allPairs: { playerA: number; playerB: number }[] = [];
-  for (let a = 0; a < n; a++)
-    for (let b = a + 1; b < n; b++)
-      allPairs.push({ playerA: playerIds[a], playerB: playerIds[b] });
+  const pk = (x: number, y: number) => `${Math.min(x, y)}-${Math.max(x, y)}`;
 
+  // ── Box of 5: Berger full round-robin (10 fixtures, 5 rounds of 2) ───────────
+  // Each player faces every other player exactly once = 4 matches.
+  // Grouped using the polygon/Berger method: fix player[0] as pivot, rotate the rest.
+  // With 5 players (odd number), each round has floor(5/2)=2 fixtures and 1 player sits out.
+  if (n === 5) {
+    const schedule: SinglesFixture[] = [];
+    const pivot = playerIds[0];
+    const rotating = [...playerIds.slice(1)]; // 4 players rotate
+    let round = 1;
+    for (let r = 0; r < n; r++) {
+      const roundPlayers = [pivot, ...rotating];
+      // Pair (0 vs 4), (1 vs 3) — player at index 2 (middle) sits out
+      const mid = Math.floor(n / 2); // = 2
+      for (let i = 0; i < mid; i++) {
+        schedule.push({
+          playerA: roundPlayers[i],
+          playerB: roundPlayers[n - 1 - i],
+          round,
+          isBalancer: false,
+          balancerEligiblePlayers: [],
+        });
+      }
+      // Rotate: move last element of rotating to front
+      rotating.unshift(rotating.pop()!);
+      round++;
+    }
+    return schedule;
+  }
+
+  // ── Box of 4: 3 unique rounds (6 fixtures) + 1 repeated round (2 fixtures) = 8 total ───
+  // 4 players × 4 matches = 16 appearances ÷ 2 per fixture = 8 fixtures.
+  // There are exactly 3 "rounds" for 4-player singles where each round covers all 4 players:
+  //   Round A: (P0 vs P1), (P2 vs P3)
+  //   Round B: (P0 vs P2), (P1 vs P3)
+  //   Round C: (P0 vs P3), (P1 vs P2)
+  // Schedule all 3 unique rounds (6 fixtures, 3 matches each), then repeat Round A as rounds 4-5.
+  // Each player ends with exactly 4 matches.
+  if (n === 4) {
+    const [P0, P1, P2, P3] = playerIds;
+    const uniqueRounds = [
+      [{ playerA: P0, playerB: P1 }, { playerA: P2, playerB: P3 }],
+      [{ playerA: P0, playerB: P2 }, { playerA: P1, playerB: P3 }],
+      [{ playerA: P0, playerB: P3 }, { playerA: P1, playerB: P2 }],
+    ];
+    const schedule: SinglesFixture[] = [];
+    let round = 1;
+    for (const roundFixtures of uniqueRounds) {
+      for (const f of roundFixtures) {
+        schedule.push({ ...f, round, isBalancer: false, balancerEligiblePlayers: [] });
+      }
+      round++;
+    }
+    // Repeat Round A (the first round) as rounds 4 and 5
+    for (const f of uniqueRounds[0]) {
+      schedule.push({ ...f, round, isBalancer: true, balancerEligiblePlayers: [f.playerA, f.playerB] });
+      round++;
+    }
+    return schedule;
+  }
+
+  // ── Fallback: greedy approach for other sizes ─────────────────────────────────
+  const target = 4;
+  const allPairs = makePairs(playerIds);
   const matchCount: Record<number, number> = {};
   const opponentCount: Record<string, number> = {};
   playerIds.forEach((p) => (matchCount[p] = 0));
-
-  const pk = (x: number, y: number) => `${Math.min(x, y)}-${Math.max(x, y)}`;
   const getO = (a: number, b: number) => opponentCount[pk(a, b)] ?? 0;
   const scorePair = (p: { playerA: number; playerB: number }) => getO(p.playerA, p.playerB);
-
   const updateCounts = (p: { playerA: number; playerB: number }) => {
     matchCount[p.playerA]++;
     matchCount[p.playerB]++;
     opponentCount[pk(p.playerA, p.playerB)] = (opponentCount[pk(p.playerA, p.playerB)] ?? 0) + 1;
   };
-
   const scheduled: SinglesFixture[] = [];
   const usedIndices = new Set<number>();
   let round = 1;
-
-  // Phase 1: schedule unique pairs until target or unique pairs exhausted
   while (true) {
     if (playerIds.every((p) => matchCount[p] >= target)) break;
-
     const inRound = new Set<number>();
     let addedInRound = false;
-
     const candidates = allPairs
       .map((p, i) => ({ p, i, score: scorePair(p), matchSum: matchCount[p.playerA] + matchCount[p.playerB] }))
       .filter(({ i }) => !usedIndices.has(i))
       .sort((a, b) => a.score - b.score || a.matchSum - b.matchSum);
-
     for (const { p, i } of candidates) {
       if (inRound.has(p.playerA) || inRound.has(p.playerB)) continue;
       if (matchCount[p.playerA] >= target && matchCount[p.playerB] >= target) continue;
-
-      inRound.add(p.playerA);
-      inRound.add(p.playerB);
+      inRound.add(p.playerA); inRound.add(p.playerB);
       scheduled.push({ ...p, round, isBalancer: false, balancerEligiblePlayers: [] });
-      usedIndices.add(i);
-      updateCounts(p);
-      addedInRound = true;
+      usedIndices.add(i); updateCounts(p); addedInRound = true;
     }
-
     if (!addedInRound) break;
     round++;
   }
-
-  // Phase 2: top-up with repeats until everyone reaches target
   let safetyLimit = 200;
   while (safetyLimit-- > 0) {
-    const counts = Object.values(matchCount) as number[];
-    const minCount = Math.min(...counts);
-    const maxCount = Math.max(...counts);
-    if (minCount >= target) break;
-
+    if (playerIds.every((p) => matchCount[p] >= target)) break;
     const needMore = playerIds.filter((p) => matchCount[p] < target);
     if (needMore.length === 0) break;
-
-    const bothNeed = allPairs
-      .map((p, i) => ({ p, i, score: scorePair(p) }))
+    const bothNeed = allPairs.map((p, i) => ({ p, i, score: scorePair(p) }))
       .filter(({ p }) => needMore.includes(p.playerA) && needMore.includes(p.playerB))
       .sort((a, b) => a.score - b.score);
-
-    const oneNeeds = allPairs
-      .map((p, i) => ({ p, i, score: scorePair(p) }))
+    const oneNeeds = allPairs.map((p, i) => ({ p, i, score: scorePair(p) }))
       .filter(({ p }) => needMore.includes(p.playerA) || needMore.includes(p.playerB))
       .sort((a, b) => a.score - b.score);
-
     const chosen = (bothNeed.length > 0 ? bothNeed : oneNeeds)[0];
     if (!chosen) break;
-
+    const maxCount = Math.max(...(Object.values(matchCount) as number[]));
+    const minCount = Math.min(...(Object.values(matchCount) as number[]));
     const isBalancer = maxCount > minCount;
-    const eligiblePlayers = isBalancer
-      ? [chosen.p.playerA, chosen.p.playerB].filter((p) => matchCount[p] < maxCount)
-      : [];
-
+    const eligiblePlayers = isBalancer ? [chosen.p.playerA, chosen.p.playerB].filter((p) => matchCount[p] < maxCount) : [];
     scheduled.push({ ...chosen.p, round, isBalancer, balancerEligiblePlayers: eligiblePlayers });
-    updateCounts(chosen.p);
-    round++;
+    updateCounts(chosen.p); round++;
   }
-
   return scheduled;
 }
 
