@@ -156,24 +156,25 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
   return (
     <div className="bg-gray-50 rounded-xl overflow-hidden mb-3 last:mb-0 border border-gray-100">
       {/* Summary row */}
-      <div className="flex items-start justify-between gap-4 p-4">
-        <div className="space-y-1 min-w-0">
-          {!isSingles && myPartner && (
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-[#1b4332] flex-shrink-0" />
-              <span className="text-sm font-medium text-gray-800 truncate">
-                Partner: <strong>{myPartner}</strong>
+      <div className="flex flex-col gap-2 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="space-y-1 min-w-0 flex-1">
+            {!isSingles && myPartner && (
+              <div className="flex items-start gap-2">
+                <Users className="w-4 h-4 text-[#1b4332] flex-shrink-0 mt-0.5" />
+                <span className="text-sm font-medium text-gray-800 break-words">
+                  Partner: <strong>{myPartner}</strong>
+                </span>
+              </div>
+            )}
+            <div className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" />
+              <span className="text-sm text-gray-600 break-words">
+                {isSingles ? <><strong>vs</strong> {opponents}</> : <>vs {opponents}</>}
               </span>
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-            <span className="text-sm text-gray-600 truncate">
-              {isSingles ? <><strong>vs</strong> {opponents}</> : <>vs {opponents}</>}
-            </span>
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
           {f.isBalancer && (() => {
             let eligibleIds: number[] = [];
             try { eligibleIds = f.balancerEligiblePlayers ? JSON.parse(f.balancerEligiblePlayers) : []; } catch {}
@@ -189,23 +190,22 @@ function FixtureCard({ fixture: f, currentUserId, onResultSubmitted }: FixtureCa
             );
           })()}
           {statusBadge}
-          {f.status === "scheduled" && (
+          </div>
+        </div>
+        {f.status === "scheduled" && (
+          <div className="flex justify-end">
             <button
               onClick={() => setOpen((v) => !v)}
               className="flex items-center gap-1.5 text-xs font-semibold bg-[#1b4332] text-white px-3 py-1.5 rounded-lg hover:bg-[#2d6a4f] transition-colors"
             >
               {open ? (
-                <>
-                  <X className="w-3.5 h-3.5" /> Cancel
-                </>
+                <><X className="w-3.5 h-3.5" /> Cancel</>
               ) : (
-                <>
-                  <ClipboardEdit className="w-3.5 h-3.5" /> Record Result
-                </>
+                <><ClipboardEdit className="w-3.5 h-3.5" /> Record Result</>
               )}
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Inline result form */}
