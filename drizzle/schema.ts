@@ -93,6 +93,8 @@ export const yearPoints = mysqlTable("year_points", {
   totalPoints: int("totalPoints").default(0).notNull(),
   totalMatchesPlayed: int("totalMatchesPlayed").default(0).notNull(),
   totalMatchesWon: int("totalMatchesWon").default(0).notNull(),
+  totalGamesWon: int("totalGamesWon").default(0).notNull(),
+  totalGamesLost: int("totalGamesLost").default(0).notNull(),
   seasonsEntered: int("seasonsEntered").default(0).notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

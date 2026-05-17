@@ -186,9 +186,22 @@ export async function deleteSeason(seasonId: number) {
       let totalPts = 0;
       let totalPlayed = 0;
       let totalWon = 0;
+      let totalGW = 0;
+      let totalGL = 0;
       for (const m of userMatches) {
         const onTeamA = m.player1Id === userId || m.partner1Id === userId;
         const won = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
+        if (m.score) {
+          for (const set of m.score.trim().split(/\s+/)) {
+            const parts = set.split("-");
+            if (parts.length !== 2) continue;
+            const g0 = parseInt(parts[0], 10);
+            const g1 = parseInt(parts[1], 10);
+            if (isNaN(g0) || isNaN(g1)) continue;
+            totalGW += onTeamA ? g0 : g1;
+            totalGL += onTeamA ? g1 : g0;
+          }
+        }
         if (won) {
           totalPts += 2;
           totalWon++;
@@ -225,7 +238,7 @@ export async function deleteSeason(seasonId: number) {
         } else {
           await db
             .update(yearPoints)
-            .set({ totalPoints: totalPts, totalMatchesPlayed: totalPlayed, totalMatchesWon: totalWon })
+            .set({ totalPoints: totalPts, totalMatchesPlayed: totalPlayed, totalMatchesWon: totalWon, totalGamesWon: totalGW, totalGamesLost: totalGL })
             .where(eq(yearPoints.id, existingYP[0].id));
         }
       }
@@ -302,7 +315,7 @@ export async function getAllSeasonEntrants(seasonId: number) {
     .from(seasonEntrants)
     .leftJoin(users, eq(seasonEntrants.userId, users.id))
     .where(eq(seasonEntrants.seasonId, seasonId))
-    .orderBy(desc(seasonEntrants.seasonPoints));
+    .orderBy(desc(seasonEntrants.seasonPoints), desc(sql`${seasonEntrants.gamesWon} - ${seasonEntrants.gamesLost}`));
 }
 
 // ── Year Points ───────────────────────────────────────────────────────────────
@@ -319,13 +332,15 @@ export async function getYearLeaderboard(year: number, division: "mens" | "ladie
       totalPoints: yearPoints.totalPoints,
       totalMatchesPlayed: yearPoints.totalMatchesPlayed,
       totalMatchesWon: yearPoints.totalMatchesWon,
+      totalGamesWon: yearPoints.totalGamesWon,
+      totalGamesLost: yearPoints.totalGamesLost,
       seasonsEntered: yearPoints.seasonsEntered,
       displayName: users.name,
     })
     .from(yearPoints)
     .leftJoin(users, eq(yearPoints.userId, users.id))
     .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division), eq(yearPoints.format, format)))
-    .orderBy(desc(yearPoints.totalPoints));
+    .orderBy(desc(yearPoints.totalPoints), desc(sql`${yearPoints.totalGamesWon} - ${yearPoints.totalGamesLost}`));
 }
 
 export async function upsertYearPoints(
@@ -334,7 +349,9 @@ export async function upsertYearPoints(
   pointsDelta: number,
   won: boolean,
   division: "mens" | "ladies" = "mens",
-  format: "doubles" | "singles" = "doubles"
+  format: "doubles" | "singles" = "doubles",
+  gamesWonDelta: number = 0,
+  gamesLostDelta: number = 0
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -351,6 +368,8 @@ export async function upsertYearPoints(
         totalPoints: existing[0].totalPoints + pointsDelta,
         totalMatchesPlayed: existing[0].totalMatchesPlayed + 1,
         totalMatchesWon: existing[0].totalMatchesWon + (won ? 1 : 0),
+        totalGamesWon: existing[0].totalGamesWon + gamesWonDelta,
+        totalGamesLost: existing[0].totalGamesLost + gamesLostDelta,
       })
       .where(eq(yearPoints.id, existing[0].id));
   } else {
@@ -362,6 +381,8 @@ export async function upsertYearPoints(
       totalPoints: pointsDelta,
       totalMatchesPlayed: 1,
       totalMatchesWon: won ? 1 : 0,
+      totalGamesWon: gamesWonDelta,
+      totalGamesLost: gamesLostDelta,
       seasonsEntered: 1,
     });
   }
@@ -605,7 +626,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesB,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision, seasonFormat);
+      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision, seasonFormat, scoreStats.gamesA, scoreStats.gamesB);
     }
   }
 
@@ -627,7 +648,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesA,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision, seasonFormat);
+      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision, seasonFormat, scoreStats.gamesB, scoreStats.gamesA);
     }
   }
 
@@ -2167,6 +2188,20 @@ export async function removePlayerFromSeason(
       playerPts = setsWon > 0 ? 1 : 0;
     }
 
+    // Calculate games won/lost by this player in this match
+    let playerGW = 0;
+    let playerGL = 0;
+    if (m.score) {
+      for (const set of m.score.trim().split(/\s+/)) {
+        const parts = set.split("-");
+        if (parts.length !== 2) continue;
+        const g0 = parseInt(parts[0], 10);
+        const g1 = parseInt(parts[1], 10);
+        if (isNaN(g0) || isNaN(g1)) continue;
+        playerGW += onTeamA ? g0 : g1;
+        playerGL += onTeamA ? g1 : g0;
+      }
+    }
     const existingYP = await db
       .select()
       .from(yearPoints)
@@ -2179,6 +2214,8 @@ export async function removePlayerFromSeason(
           totalPoints: Math.max(0, existingYP[0].totalPoints - playerPts),
           totalMatchesPlayed: Math.max(0, existingYP[0].totalMatchesPlayed - 1),
           totalMatchesWon: Math.max(0, existingYP[0].totalMatchesWon - (playerWon ? 1 : 0)),
+          totalGamesWon: Math.max(0, existingYP[0].totalGamesWon - playerGW),
+          totalGamesLost: Math.max(0, existingYP[0].totalGamesLost - playerGL),
         })
         .where(eq(yearPoints.id, existingYP[0].id));
     }

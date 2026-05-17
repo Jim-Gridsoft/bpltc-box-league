@@ -205,6 +205,7 @@ export default function Leaderboard() {
                     <th className="px-4 py-3 text-left w-10">#</th>
                     <th className="px-4 py-3 text-left">Player</th>
                     <th className="px-4 py-3 text-center">Total Pts</th>
+                    <th className="px-4 py-3 text-center hidden sm:table-cell" title="Games Differential (Won - Lost)">GD</th>
                     <th className="px-4 py-3 text-center hidden sm:table-cell">Matches</th>
                     <th className="px-4 py-3 text-center hidden sm:table-cell">Seasons</th>
                     <th className="px-4 py-3 text-center hidden md:table-cell">Win %</th>
@@ -216,6 +217,7 @@ export default function Leaderboard() {
                       <td className="px-4 py-3"><div className="flex items-center justify-center">{getRankIcon(i + 1)}</div></td>
                       <td className="px-4 py-3 font-medium text-gray-800">{player.displayName ?? "—"}</td>
                       <td className="px-4 py-3 text-center font-bold text-[#1b4332] text-base">{player.totalPoints}</td>
+                      <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{(() => { const d = ((player as any).totalGamesWon ?? 0) - ((player as any).totalGamesLost ?? 0); return (d > 0 ? '+' : '') + d; })()}</td>
                       <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.totalMatchesPlayed}</td>
                       <td className="px-4 py-3 text-center text-gray-500 hidden sm:table-cell">{player.seasonsEntered}</td>
                       <td className="px-4 py-3 text-center hidden md:table-cell"><WinRate played={player.totalMatchesPlayed} won={player.totalMatchesWon} /></td>
