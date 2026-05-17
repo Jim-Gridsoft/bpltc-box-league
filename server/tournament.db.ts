@@ -1,4 +1,4 @@
-import { eq, desc, and, asc, like, or, ne } from "drizzle-orm";
+import { eq, desc, and, asc, like, or, ne, sql } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
@@ -411,7 +411,7 @@ export async function getBoxWithMembers(boxId: number) {
     .from(boxMembers)
     .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
     .where(eq(boxMembers.boxId, boxId))
-    .orderBy(desc(seasonEntrants.seasonPoints), desc(seasonEntrants.matchesWon), desc(seasonEntrants.gamesWon));
+    .orderBy(desc(seasonEntrants.seasonPoints), desc(sql`${seasonEntrants.gamesWon} - ${seasonEntrants.gamesLost}`));
 
   return { ...box[0], members };
 }
@@ -1715,22 +1715,16 @@ export async function endSeason(seasonId: number): Promise<{
       .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
       .where(eq(boxMembers.boxId, box.id));
 
-    // Sort by: seasonPoints desc, matchesWon desc, gamesDiff desc, matchesPlayed asc
+    // Sort by: seasonPoints desc, then game differential (gamesWon - gamesLost) desc
     const ranked = members
       .filter((m) => m.userId !== null)
       .sort((a, b) => {
         const aPts = a.seasonPoints ?? 0;
         const bPts = b.seasonPoints ?? 0;
-        const aWon = a.matchesWon ?? 0;
-        const bWon = b.matchesWon ?? 0;
         const aDiff = (a.gamesWon ?? 0) - (a.gamesLost ?? 0);
         const bDiff = (b.gamesWon ?? 0) - (b.gamesLost ?? 0);
-        const aPlayed = a.matchesPlayed ?? 0;
-        const bPlayed = b.matchesPlayed ?? 0;
         if (bPts !== aPts) return bPts - aPts;
-        if (bWon !== aWon) return bWon - aWon;
-        if (bDiff !== aDiff) return bDiff - aDiff;
-        return aPlayed - bPlayed;
+        return bDiff - aDiff;
       });
 
     const boxOutcomes: typeof summary[0]["outcomes"] = [];
