@@ -924,7 +924,7 @@ export default function Dashboard() {
                 </div>
                 <div className="divide-y divide-gray-50">
                   {myMatches.map((m) => {
-                    const onTeamA = m.player1Id === myEntry.id || m.partner1Id === myEntry.id;
+                    const onTeamA = m.player1Id === myEntry.userId || m.partner1Id === myEntry.userId;
                     const iWon = onTeamA ? m.winner === "A" : m.winner === "B";
                     // Count sets won by this user's team for the 2/1/0 points badge
                     const setsWonByMe = (() => {
