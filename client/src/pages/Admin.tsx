@@ -72,6 +72,10 @@ export default function Admin() {
     { seasonId: completedResultsSeason?.id ?? 0 },
     { enabled: !!completedResultsSeason && user?.role === "admin" }
   );
+  const { data: completedSeasonBoxes, isLoading: completedSeasonBoxesLoading } = trpc.tournament.seasonBoxes.useQuery(
+    { seasonId: completedResultsSeason?.id ?? 0 },
+    { enabled: !!completedResultsSeason && user?.role === "admin" }
+  );
 
   const markPaidMutation = trpc.tournament.adminMarkPaid.useMutation({
     onSuccess: () => { toast.success("Marked as paid."); utils.tournament.adminSeasonEntrants.invalidate(); },
@@ -832,6 +836,24 @@ export default function Admin() {
                       </table>
                     </div>
                   )}
+
+                  <div className="border-t border-gray-100 px-6 py-5 bg-[#faf6ee]">
+                    <div className="mb-4">
+                      <h3 className="font-serif text-lg font-bold text-[#1b4332]">Final Box Standings</h3>
+                      <p className="text-sm text-gray-500">Individual final results for every box in the selected season.</p>
+                    </div>
+                    {completedSeasonBoxesLoading ? (
+                      <div className="py-6 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
+                    ) : !completedSeasonBoxes || completedSeasonBoxes.length === 0 ? (
+                      <p className="text-sm text-gray-400">No boxes are available for this season.</p>
+                    ) : (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        {completedSeasonBoxes.map((box) => (
+                          <CompletedBoxFinalStandings key={box.id} box={box} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -1402,6 +1424,68 @@ export default function Admin() {
     </div>
   );
 }
+function CompletedBoxFinalStandings({ box }: { box: { id: number; name: string; level?: number } }) {
+  const { data: boxDetail, isLoading } = trpc.tournament.boxDetail.useQuery({ boxId: box.id });
+  const members = boxDetail?.members ?? [];
+
+  return (
+    <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+      <div className="px-5 py-3 bg-gray-50 border-b border-gray-200 flex items-center gap-2">
+        <div className="w-7 h-7 rounded-full bg-[#1b4332] text-white flex items-center justify-center text-xs font-bold">
+          {box.level ?? "—"}
+        </div>
+        <div>
+          <p className="font-semibold text-[#1b4332] text-sm">{box.name}</p>
+          <p className="text-xs text-gray-500">Final box standings</p>
+        </div>
+      </div>
+      {isLoading ? (
+        <div className="px-5 py-5 text-center"><Loader2 className="w-5 h-5 animate-spin text-[#1b4332] mx-auto" /></div>
+      ) : members.length === 0 ? (
+        <p className="px-5 py-4 text-sm text-gray-400">No final standings are available for this box.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-white text-gray-500 uppercase tracking-wide">
+              <tr>
+                <th className="px-4 py-2 text-left">#</th>
+                <th className="px-4 py-2 text-left">Player</th>
+                <th className="px-4 py-2 text-center">Pts</th>
+                <th className="px-4 py-2 text-center">GD</th>
+                <th className="px-4 py-2 text-right">Outcome</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {members.map((member, index) => {
+                const gameDifferential = ((member as any).gamesWon ?? 0) - ((member as any).gamesLost ?? 0);
+                const outcome = member.outcome;
+                return (
+                  <tr key={member.id} className={index === 0 ? "bg-amber-50/40" : ""}>
+                    <td className="px-4 py-2 font-semibold text-gray-600">{index + 1}</td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{member.displayName}</td>
+                    <td className="px-4 py-2 text-center font-semibold text-[#1b4332]">{member.seasonPoints}</td>
+                    <td className="px-4 py-2 text-center text-gray-600">{gameDifferential > 0 ? `+${gameDifferential}` : gameDifferential}</td>
+                    <td className="px-4 py-2 text-right">
+                      {outcome ? (
+                        <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${
+                          outcome === "promoted" ? "bg-green-100 text-green-700" :
+                          outcome === "relegated" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {outcome === "promoted" ? "Promoted" : outcome === "relegated" ? "Relegated" : "Stayed"}
+                        </span>
+                      ) : <span className="text-gray-400">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BoxFixtureRow({ box }: { box: { id: number; name: string } }) {
   const [expanded, setExpanded] = useState(false);
   const { data: fixtures } = trpc.tournament.boxFixtures.useQuery({ boxId: box.id }, { enabled: expanded });
