@@ -30,7 +30,7 @@ export async function sendPasswordResetEmail(opts: {
 
   try {
     const { error } = await resend.emails.send({
-      from: "BPLTC Box League <noreply@bpltcboxleague.com>",
+      from: "BPLTC Box League <onboarding@resend.dev>",
       to: opts.to,
       subject: "Reset your BPLTC Box League password",
       html: `
@@ -43,7 +43,7 @@ export async function sendPasswordResetEmail(opts: {
 <body style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #f5f0e8; margin: 0; padding: 32px 16px;">
   <div style="max-width: 480px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
     <div style="background: #1a3a2a; padding: 24px 32px;">
-      <h1 style="color: #f5f0e8; font-family: Georgia, serif; font-size: 22px; margin: 0;">BPLTC Doubles Box League</h1>
+      <h1 style="color: #f5f0e8; font-family: Georgia, serif; font-size: 22px; margin: 0;">BPLTC Box League</h1>
     </div>
     <div style="padding: 32px;">
       <h2 style="color: #1a3a2a; font-size: 18px; margin-top: 0;">Password Reset Request</h2>

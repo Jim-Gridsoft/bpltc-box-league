@@ -68,16 +68,16 @@ export const tournamentRouter = router({
 
   /** List all seasons, optionally filtered by division */
   seasons: publicProcedure
-    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }).optional())
     .query(async ({ input }) => {
-      return getAllSeasons(input?.division);
+      return getAllSeasons(input?.division, input?.format);
     }),
 
   /** Get the currently open/active season for a division */
   currentSeason: publicProcedure
-    .input(z.object({ division: z.enum(["mens", "ladies"]).optional() }).optional())
+    .input(z.object({ division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }).optional())
     .query(async ({ input }) => {
-      return (await getOpenSeason(input?.division)) ?? null;
+      return (await getOpenSeason(input?.division, input?.format)) ?? null;
     }),
 
   // ── Season Entry ────────────────────────────────────────────────────────────
@@ -187,9 +187,9 @@ export const tournamentRouter = router({
 
   /** Year-long accumulator leaderboard */
   yearLeaderboard: publicProcedure
-    .input(z.object({ year: z.number(), division: z.enum(["mens", "ladies"]).optional() }))
+    .input(z.object({ year: z.number(), division: z.enum(["mens", "ladies"]).optional(), format: z.enum(["doubles", "singles"]).optional() }))
     .query(async ({ input }) => {
-      return getYearLeaderboard(input.year, input.division ?? "mens");
+      return getYearLeaderboard(input.year, input.division ?? "mens", input.format ?? "doubles");
     }),
 
   // ── Boxes ────────────────────────────────────────────────────────────────────
@@ -244,9 +244,9 @@ export const tournamentRouter = router({
       z.object({
         seasonId: z.number(),
         boxId: z.number(),
-        partner1Id: z.number(), // reporter's partner (userId)
+        partner1Id: z.number().optional(), // reporter's partner (userId) — null for singles
         player2Id: z.number(), // opponent 1 (userId)
-        partner2Id: z.number(), // opponent 2 (userId)
+        partner2Id: z.number().optional(), // opponent 2 (userId) — null for singles
         score: z.string().min(1).max(64),
         winner: z.enum(["A", "B"]),
         playedAt: z.date(),
@@ -263,12 +263,12 @@ export const tournamentRouter = router({
         });
       }
 
-      // Validate all four players are distinct
-      const ids = [ctx.user.id, input.partner1Id, input.player2Id, input.partner2Id];
-      if (new Set(ids).size !== 4) {
+      // Validate all players are distinct
+      const ids = [ctx.user.id, input.partner1Id, input.player2Id, input.partner2Id].filter((id): id is number => id != null);
+      if (new Set(ids).size !== ids.length) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "All four players must be different people.",
+          message: "All players must be different people.",
         });
       }
 
@@ -276,9 +276,9 @@ export const tournamentRouter = router({
         boxId: input.boxId,
         seasonId: input.seasonId,
         player1Id: ctx.user.id,
-        partner1Id: input.partner1Id,
+        partner1Id: input.partner1Id ?? null,
         player2Id: input.player2Id,
-        partner2Id: input.partner2Id,
+        partner2Id: input.partner2Id ?? null,
         score: input.score,
         winner: input.winner,
         playedAt: input.playedAt,
@@ -308,6 +308,7 @@ export const tournamentRouter = router({
         endDate: z.date(),
         registrationDeadline: z.date(),
         division: z.enum(["mens", "ladies"]).default("mens"),
+        format: z.enum(["singles", "doubles"]).default("doubles"),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -709,10 +710,10 @@ export const tournamentRouter = router({
         fixtureId: z.number(),
         // Team A player user IDs
         player1Id: z.number(),
-        partner1Id: z.number(),
+        partner1Id: z.number().optional(), // null for singles
         // Team B player user IDs
         player2Id: z.number(),
-        partner2Id: z.number(),
+        partner2Id: z.number().optional(), // null for singles
         score: z.string().min(1).max(64),
         winner: z.enum(["A", "B"]),
         playedAt: z.date(),
@@ -722,12 +723,12 @@ export const tournamentRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
 
-      // Validate all four players are distinct
-      const ids = [input.player1Id, input.partner1Id, input.player2Id, input.partner2Id];
-      if (new Set(ids).size !== 4) {
+      // Validate all players are distinct
+      const ids = [input.player1Id, input.partner1Id, input.player2Id, input.partner2Id].filter((id): id is number => id != null);
+      if (new Set(ids).size !== ids.length) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "All four players must be different people.",
+          message: "All players must be different people.",
         });
       }
 
@@ -736,9 +737,9 @@ export const tournamentRouter = router({
           boxId: input.boxId,
           seasonId: input.seasonId,
           player1Id: input.player1Id,
-          partner1Id: input.partner1Id,
+          partner1Id: input.partner1Id ?? null,
           player2Id: input.player2Id,
-          partner2Id: input.partner2Id,
+          partner2Id: input.partner2Id ?? null,
           score: input.score,
           winner: input.winner,
           playedAt: input.playedAt,

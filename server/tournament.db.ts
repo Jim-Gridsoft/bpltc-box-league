@@ -1,4 +1,4 @@
-import { eq, desc, and, asc, like, or, ne } from "drizzle-orm";
+import { eq, desc, and, asc, like, or, ne, sql } from "drizzle-orm";
 import { inArray } from "drizzle-orm";
 import { getDb } from "./db";
 import {
@@ -24,11 +24,14 @@ import {
 
 // ── Seasons ───────────────────────────────────────────────────────────────────
 
-export async function getAllSeasons(division?: "mens" | "ladies") {
+export async function getAllSeasons(division?: "mens" | "ladies", format?: "doubles" | "singles") {
   const db = await getDb();
   if (!db) return [];
-  if (division) {
-    return db.select().from(seasons).where(eq(seasons.division, division)).orderBy(desc(seasons.startDate));
+  const conditions = [];
+  if (division) conditions.push(eq(seasons.division, division));
+  if (format) conditions.push(eq(seasons.format, format));
+  if (conditions.length > 0) {
+    return db.select().from(seasons).where(conditions.length === 1 ? conditions[0] : and(...conditions)).orderBy(desc(seasons.startDate));
   }
   return db.select().from(seasons).orderBy(desc(seasons.startDate));
 }
@@ -44,14 +47,17 @@ export async function getActiveSeason() {
   return rows[0];
 }
 
-export async function getOpenSeason(division?: "mens" | "ladies") {
+export async function getOpenSeason(division?: "mens" | "ladies", format?: "doubles" | "singles") {
   const db = await getDb();
   if (!db) return undefined;
-  // Returns a season that is open for registration OR active for the given division
+  // Returns a season that is open for registration OR active for the given division/format
+  const conditions = [];
+  if (division) conditions.push(eq(seasons.division, division));
+  if (format) conditions.push(eq(seasons.format, format));
   const rows = await db
     .select()
     .from(seasons)
-    .where(division ? eq(seasons.division, division) : undefined)
+    .where(conditions.length > 0 ? (conditions.length === 1 ? conditions[0] : and(...conditions)) : undefined)
     .orderBy(asc(seasons.startDate))
     .limit(10);
   return rows.find((s) => s.status === "registration" || s.status === "active");
@@ -101,6 +107,7 @@ export async function deleteSeason(seasonId: number) {
   const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
   const seasonYear = seasonRows[0]?.year ?? new Date().getFullYear();
   const seasonDiv: "mens" | "ladies" = seasonRows[0]?.division ?? "mens";
+  const seasonFormat: "doubles" | "singles" = (seasonRows[0]?.format as "doubles" | "singles") ?? "doubles";
 
   // 1. Delete fixtures for this season
   await db.delete(fixtures).where(eq(fixtures.seasonId, seasonId));
@@ -110,9 +117,9 @@ export async function deleteSeason(seasonId: number) {
   const affectedUserIds = new Set<number>();
   for (const m of seasonMatches) {
     affectedUserIds.add(m.player1Id);
-    affectedUserIds.add(m.partner1Id);
+    if (m.partner1Id != null) affectedUserIds.add(m.partner1Id);
     affectedUserIds.add(m.player2Id);
-    affectedUserIds.add(m.partner2Id);
+    if (m.partner2Id != null) affectedUserIds.add(m.partner2Id);
   }
 
   // 2b. Delete matches for this season
@@ -162,7 +169,7 @@ export async function deleteSeason(seasonId: number) {
     const sameDivSeasons = await db
       .select({ id: seasons.id })
       .from(seasons)
-      .where(and(eq(seasons.year, seasonYear), eq(seasons.division, seasonDiv)));
+      .where(and(eq(seasons.year, seasonYear), eq(seasons.division, seasonDiv), eq(seasons.format, seasonFormat)));
     const sameDivSeasonIds = sameDivSeasons.map((s) => s.id);
 
     const allRemainingMatches = sameDivSeasonIds.length > 0
@@ -179,9 +186,22 @@ export async function deleteSeason(seasonId: number) {
       let totalPts = 0;
       let totalPlayed = 0;
       let totalWon = 0;
+      let totalGW = 0;
+      let totalGL = 0;
       for (const m of userMatches) {
         const onTeamA = m.player1Id === userId || m.partner1Id === userId;
         const won = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
+        if (m.score) {
+          for (const set of m.score.trim().split(/\s+/)) {
+            const parts = set.split("-");
+            if (parts.length !== 2) continue;
+            const g0 = parseInt(parts[0], 10);
+            const g1 = parseInt(parts[1], 10);
+            if (isNaN(g0) || isNaN(g1)) continue;
+            totalGW += onTeamA ? g0 : g1;
+            totalGL += onTeamA ? g1 : g0;
+          }
+        }
         if (won) {
           totalPts += 2;
           totalWon++;
@@ -208,7 +228,7 @@ export async function deleteSeason(seasonId: number) {
       const existingYP = await db
         .select()
         .from(yearPoints)
-        .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, seasonYear), eq(yearPoints.division, seasonDiv)))
+        .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, seasonYear), eq(yearPoints.division, seasonDiv), eq(yearPoints.format, seasonFormat)))
         .limit(1);
 
       if (existingYP[0]) {
@@ -218,7 +238,7 @@ export async function deleteSeason(seasonId: number) {
         } else {
           await db
             .update(yearPoints)
-            .set({ totalPoints: totalPts, totalMatchesPlayed: totalPlayed, totalMatchesWon: totalWon })
+            .set({ totalPoints: totalPts, totalMatchesPlayed: totalPlayed, totalMatchesWon: totalWon, totalGamesWon: totalGW, totalGamesLost: totalGL })
             .where(eq(yearPoints.id, existingYP[0].id));
         }
       }
@@ -295,12 +315,12 @@ export async function getAllSeasonEntrants(seasonId: number) {
     .from(seasonEntrants)
     .leftJoin(users, eq(seasonEntrants.userId, users.id))
     .where(eq(seasonEntrants.seasonId, seasonId))
-    .orderBy(desc(seasonEntrants.seasonPoints));
+    .orderBy(desc(seasonEntrants.seasonPoints), desc(sql`${seasonEntrants.gamesWon} - ${seasonEntrants.gamesLost}`));
 }
 
 // ── Year Points ───────────────────────────────────────────────────────────────
 
-export async function getYearLeaderboard(year: number, division: "mens" | "ladies" = "mens") {
+export async function getYearLeaderboard(year: number, division: "mens" | "ladies" = "mens", format: "doubles" | "singles" = "doubles") {
   const db = await getDb();
   if (!db) return [];
   return db
@@ -312,13 +332,15 @@ export async function getYearLeaderboard(year: number, division: "mens" | "ladie
       totalPoints: yearPoints.totalPoints,
       totalMatchesPlayed: yearPoints.totalMatchesPlayed,
       totalMatchesWon: yearPoints.totalMatchesWon,
+      totalGamesWon: yearPoints.totalGamesWon,
+      totalGamesLost: yearPoints.totalGamesLost,
       seasonsEntered: yearPoints.seasonsEntered,
       displayName: users.name,
     })
     .from(yearPoints)
     .leftJoin(users, eq(yearPoints.userId, users.id))
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)))
-    .orderBy(desc(yearPoints.totalPoints));
+    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division), eq(yearPoints.format, format)))
+    .orderBy(desc(yearPoints.totalPoints), desc(sql`${yearPoints.totalGamesWon} - ${yearPoints.totalGamesLost}`));
 }
 
 export async function upsertYearPoints(
@@ -326,14 +348,17 @@ export async function upsertYearPoints(
   year: number,
   pointsDelta: number,
   won: boolean,
-  division: "mens" | "ladies" = "mens"
+  division: "mens" | "ladies" = "mens",
+  format: "doubles" | "singles" = "doubles",
+  gamesWonDelta: number = 0,
+  gamesLostDelta: number = 0
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const existing = await db
     .select()
     .from(yearPoints)
-    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, division)))
+    .where(and(eq(yearPoints.userId, userId), eq(yearPoints.year, year), eq(yearPoints.division, division), eq(yearPoints.format, format)))
     .limit(1);
 
   if (existing[0]) {
@@ -343,6 +368,8 @@ export async function upsertYearPoints(
         totalPoints: existing[0].totalPoints + pointsDelta,
         totalMatchesPlayed: existing[0].totalMatchesPlayed + 1,
         totalMatchesWon: existing[0].totalMatchesWon + (won ? 1 : 0),
+        totalGamesWon: existing[0].totalGamesWon + gamesWonDelta,
+        totalGamesLost: existing[0].totalGamesLost + gamesLostDelta,
       })
       .where(eq(yearPoints.id, existing[0].id));
   } else {
@@ -350,9 +377,12 @@ export async function upsertYearPoints(
       userId,
       year,
       division,
+      format,
       totalPoints: pointsDelta,
       totalMatchesPlayed: 1,
       totalMatchesWon: won ? 1 : 0,
+      totalGamesWon: gamesWonDelta,
+      totalGamesLost: gamesLostDelta,
       seasonsEntered: 1,
     });
   }
@@ -402,7 +432,7 @@ export async function getBoxWithMembers(boxId: number) {
     .from(boxMembers)
     .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
     .where(eq(boxMembers.boxId, boxId))
-    .orderBy(desc(seasonEntrants.seasonPoints), desc(seasonEntrants.matchesWon), desc(seasonEntrants.gamesWon));
+    .orderBy(desc(seasonEntrants.seasonPoints), desc(sql`${seasonEntrants.gamesWon} - ${seasonEntrants.gamesLost}`));
 
   return { ...box[0], members };
 }
@@ -487,9 +517,9 @@ export async function getAllMatchesBySeason(seasonId: number) {
   const allUserIds = new Set<number>();
   for (const m of rows) {
     allUserIds.add(m.player1Id);
-    allUserIds.add(m.partner1Id);
+    if (m.partner1Id != null) allUserIds.add(m.partner1Id);
     allUserIds.add(m.player2Id);
-    allUserIds.add(m.partner2Id);
+    if (m.partner2Id != null) allUserIds.add(m.partner2Id);
   }
   const userRows = await db
     .select({ id: users.id, name: users.name })
@@ -500,9 +530,9 @@ export async function getAllMatchesBySeason(seasonId: number) {
   return rows.map((m) => ({
     ...m,
     player1Name: nameMap.get(m.player1Id) ?? "Unknown",
-    partner1Name: nameMap.get(m.partner1Id) ?? "Unknown",
+    partner1Name: m.partner1Id != null ? (nameMap.get(m.partner1Id) ?? "Unknown") : null,
     player2Name: nameMap.get(m.player2Id) ?? "Unknown",
-    partner2Name: nameMap.get(m.partner2Id) ?? "Unknown",
+    partner2Name: m.partner2Id != null ? (nameMap.get(m.partner2Id) ?? "Unknown") : null,
   }));
 }
 
@@ -551,9 +581,10 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const teamAWon = data.winner === "A";
   const year = data.playedAt.getFullYear();
 
-  // Look up the season's division so year_points are stored per-division
-  const seasonRow = await db.select({ division: seasons.division }).from(seasons).where(eq(seasons.id, data.seasonId)).limit(1);
+  // Look up the season's division and format so year_points are stored per-division and per-format
+  const seasonRow = await db.select({ division: seasons.division, format: seasons.format }).from(seasons).where(eq(seasons.id, data.seasonId)).limit(1);
   const seasonDivision: "mens" | "ladies" = seasonRow[0]?.division ?? "mens";
+  const seasonFormat: "doubles" | "singles" = (seasonRow[0]?.format as "doubles" | "singles") ?? "doubles";
 
   // Parse the score string (e.g. "6-3 4-6 6-5") to count sets and games won per team
   function countScoreStats(score: string | null): { setsA: number; setsB: number; gamesA: number; gamesB: number } {
@@ -574,8 +605,8 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
   const scoreStats = countScoreStats(data.score ?? null);
   const setsWon = { teamA: scoreStats.setsA, teamB: scoreStats.setsB };
 
-  const teamA = [data.player1Id, data.partner1Id];
-  const teamB = [data.player2Id, data.partner2Id];
+  const teamA = [data.player1Id, data.partner1Id].filter((id): id is number => id != null);
+  const teamB = [data.player2Id, data.partner2Id].filter((id): id is number => id != null);
 
   for (const userId of teamA) {
     const entrant = await db
@@ -595,7 +626,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesB,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision);
+      await upsertYearPoints(userId, year, pts, teamAWon, seasonDivision, seasonFormat, scoreStats.gamesA, scoreStats.gamesB);
     }
   }
 
@@ -617,7 +648,7 @@ export async function reportMatch(data: InsertMatch, fixtureId?: number) {
           gamesLost: entrant[0].gamesLost + scoreStats.gamesA,
         })
         .where(eq(seasonEntrants.id, entrant[0].id));
-      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision);
+      await upsertYearPoints(userId, year, pts, !teamAWon, seasonDivision, seasonFormat, scoreStats.gamesB, scoreStats.gamesA);
     }
   }
 
@@ -651,8 +682,8 @@ export async function deleteMatch(matchId: number) {
 
   await db.delete(matches).where(eq(matches.id, matchId));
 
-  // Recalculate season points for all four players from remaining matches
-  const allPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id];
+  // Recalculate season points for all players from remaining matches
+  const allPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter((id): id is number => id != null);
   for (const userId of allPlayers) {
     const entrant = await db
       .select()
@@ -674,12 +705,13 @@ export async function deleteMatch(matchId: number) {
         x.partner2Id === userId
     );
 
+
     let pts = 0;
     let won = 0;
     let gw = 0;
     let gl = 0;
     for (const um of userMatches) {
-      const onTeamA = um.player1Id === userId || um.partner1Id === userId;
+      const onTeamA = um.player1Id === userId || (um.partner1Id != null && um.partner1Id === userId);
       const userWon = (onTeamA && um.winner === "A") || (!onTeamA && um.winner === "B");
       // Count games won and lost by this user's team
       if (um.score) {
@@ -1172,6 +1204,11 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Determine season format to choose the right schedule builder
+  const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
+  const season = seasonRows[0];
+  const isSingles = season?.format === "singles";
+
   const seasonBoxes = await db
     .select()
     .from(boxes)
@@ -1195,30 +1232,47 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
       .where(eq(boxMembers.boxId, box.id));
 
     const playerIds = members.map((m) => m.userId).filter((id): id is number => id !== null);
-    if (playerIds.length < 4) continue;
 
-    await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
-
-    const scheduled = buildBalancedSchedule(playerIds);
-    const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
-      boxId: box.id,
-      seasonId,
-      round: f.round,
-      teamAPlayer1: f.teamA[0],
-      teamAPlayer2: f.teamA[1],
-      teamBPlayer1: f.teamB[0],
-      teamBPlayer2: f.teamB[1],
-      status: "scheduled" as const,
-      isBalancer: f.isBalancer,
-      // Persist eligible player IDs as a JSON string (null for non-balancer fixtures)
-      balancerEligiblePlayers: f.isBalancer
-        ? JSON.stringify(f.balancerEligiblePlayers)
-        : null,
-    }));
-
-    if (fixtureRows.length > 0) {
-      await db.insert(fixtures).values(fixtureRows);
-      totalFixtures += fixtureRows.length;
+    if (isSingles) {
+      if (playerIds.length < 2) continue;
+      await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+      const scheduled = buildSinglesSchedule(playerIds);
+      const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
+        boxId: box.id,
+        seasonId,
+        round: f.round,
+        teamAPlayer1: f.playerA,
+        teamAPlayer2: null,
+        teamBPlayer1: f.playerB,
+        teamBPlayer2: null,
+        status: "scheduled" as const,
+        isBalancer: f.isBalancer,
+        balancerEligiblePlayers: f.isBalancer ? JSON.stringify(f.balancerEligiblePlayers) : null,
+      }));
+      if (fixtureRows.length > 0) {
+        await db.insert(fixtures).values(fixtureRows);
+        totalFixtures += fixtureRows.length;
+      }
+    } else {
+      if (playerIds.length < 4) continue;
+      await db.delete(fixtures).where(eq(fixtures.boxId, box.id));
+      const scheduled = buildBalancedSchedule(playerIds);
+      const fixtureRows: InsertFixture[] = scheduled.map((f) => ({
+        boxId: box.id,
+        seasonId,
+        round: f.round,
+        teamAPlayer1: f.teamA[0],
+        teamAPlayer2: f.teamA[1],
+        teamBPlayer1: f.teamB[0],
+        teamBPlayer2: f.teamB[1],
+        status: "scheduled" as const,
+        isBalancer: f.isBalancer,
+        balancerEligiblePlayers: f.isBalancer ? JSON.stringify(f.balancerEligiblePlayers) : null,
+      }));
+      if (fixtureRows.length > 0) {
+        await db.insert(fixtures).values(fixtureRows);
+        totalFixtures += fixtureRows.length;
+      }
     }
   }
 
@@ -1386,6 +1440,158 @@ export function buildBalancedSchedule(playerIds: number[]): ScheduledFixture[] {
   return scheduled;
 }
 
+// ── Singles schedule builder (pure function, no DB access) ──────────────────
+
+interface SinglesFixture {
+  playerA: number;
+  playerB: number;
+  round: number;
+  isBalancer: boolean;
+  balancerEligiblePlayers: number[];
+}
+
+/**
+ * Build a singles schedule for a set of player IDs.
+ * Target: every player plays exactly 4 matches regardless of box size.
+ *
+ * Box of 4: 8 fixtures = all 6 unique pairs + 2 randomly chosen repeats (most-varied first).
+ *           Each player plays 4 matches, faces every opponent at least once.
+ * Box of 5: 10 fixtures = full round-robin (C(5,2)=10 unique pairs).
+ *           Each player faces every other player exactly once = 4 matches.
+ *           Grouped into 5 rounds of 2 fixtures each using Berger table (1 player sits out per round).
+ */
+export function buildSinglesSchedule(playerIds: number[]): SinglesFixture[] {
+  const n = playerIds.length;
+  if (n < 2) return [];
+
+  // Helper to generate all unique pairs
+  const makePairs = (ids: number[]) => {
+    const pairs: { playerA: number; playerB: number }[] = [];
+    for (let a = 0; a < ids.length; a++)
+      for (let b = a + 1; b < ids.length; b++)
+        pairs.push({ playerA: ids[a], playerB: ids[b] });
+    return pairs;
+  };
+
+  const pk = (x: number, y: number) => `${Math.min(x, y)}-${Math.max(x, y)}`;
+
+  // ── Box of 5: Berger full round-robin (10 fixtures, 5 rounds of 2) ───────────
+  // Each player faces every other player exactly once = 4 matches.
+  // Grouped using the polygon/Berger method: fix player[0] as pivot, rotate the rest.
+  // With 5 players (odd number), each round has floor(5/2)=2 fixtures and 1 player sits out.
+  if (n === 5) {
+    const schedule: SinglesFixture[] = [];
+    const pivot = playerIds[0];
+    const rotating = [...playerIds.slice(1)]; // 4 players rotate
+    let round = 1;
+    for (let r = 0; r < n; r++) {
+      const roundPlayers = [pivot, ...rotating];
+      // Pair (0 vs 4), (1 vs 3) — player at index 2 (middle) sits out
+      const mid = Math.floor(n / 2); // = 2
+      for (let i = 0; i < mid; i++) {
+        schedule.push({
+          playerA: roundPlayers[i],
+          playerB: roundPlayers[n - 1 - i],
+          round,
+          isBalancer: false,
+          balancerEligiblePlayers: [],
+        });
+      }
+      // Rotate: move last element of rotating to front
+      rotating.unshift(rotating.pop()!);
+      round++;
+    }
+    return schedule;
+  }
+
+  // ── Box of 4: 3 unique rounds (6 fixtures) + 1 repeated round (2 fixtures) = 8 total ───
+  // 4 players × 4 matches = 16 appearances ÷ 2 per fixture = 8 fixtures.
+  // There are exactly 3 "rounds" for 4-player singles where each round covers all 4 players:
+  //   Round A: (P0 vs P1), (P2 vs P3)
+  //   Round B: (P0 vs P2), (P1 vs P3)
+  //   Round C: (P0 vs P3), (P1 vs P2)
+  // Schedule all 3 unique rounds (6 fixtures, 3 matches each), then repeat Round A as rounds 4-5.
+  // Each player ends with exactly 4 matches.
+  if (n === 4) {
+    const [P0, P1, P2, P3] = playerIds;
+    const uniqueRounds = [
+      [{ playerA: P0, playerB: P1 }, { playerA: P2, playerB: P3 }],
+      [{ playerA: P0, playerB: P2 }, { playerA: P1, playerB: P3 }],
+      [{ playerA: P0, playerB: P3 }, { playerA: P1, playerB: P2 }],
+    ];
+    const schedule: SinglesFixture[] = [];
+    let round = 1;
+    for (const roundFixtures of uniqueRounds) {
+      for (const f of roundFixtures) {
+        schedule.push({ ...f, round, isBalancer: false, balancerEligiblePlayers: [] });
+      }
+      round++;
+    }
+    // Repeat Round A (the first round) as rounds 4 and 5
+    for (const f of uniqueRounds[0]) {
+      schedule.push({ ...f, round, isBalancer: true, balancerEligiblePlayers: [f.playerA, f.playerB] });
+      round++;
+    }
+    return schedule;
+  }
+
+  // ── Fallback: greedy approach for other sizes ─────────────────────────────────
+  const target = 4;
+  const allPairs = makePairs(playerIds);
+  const matchCount: Record<number, number> = {};
+  const opponentCount: Record<string, number> = {};
+  playerIds.forEach((p) => (matchCount[p] = 0));
+  const getO = (a: number, b: number) => opponentCount[pk(a, b)] ?? 0;
+  const scorePair = (p: { playerA: number; playerB: number }) => getO(p.playerA, p.playerB);
+  const updateCounts = (p: { playerA: number; playerB: number }) => {
+    matchCount[p.playerA]++;
+    matchCount[p.playerB]++;
+    opponentCount[pk(p.playerA, p.playerB)] = (opponentCount[pk(p.playerA, p.playerB)] ?? 0) + 1;
+  };
+  const scheduled: SinglesFixture[] = [];
+  const usedIndices = new Set<number>();
+  let round = 1;
+  while (true) {
+    if (playerIds.every((p) => matchCount[p] >= target)) break;
+    const inRound = new Set<number>();
+    let addedInRound = false;
+    const candidates = allPairs
+      .map((p, i) => ({ p, i, score: scorePair(p), matchSum: matchCount[p.playerA] + matchCount[p.playerB] }))
+      .filter(({ i }) => !usedIndices.has(i))
+      .sort((a, b) => a.score - b.score || a.matchSum - b.matchSum);
+    for (const { p, i } of candidates) {
+      if (inRound.has(p.playerA) || inRound.has(p.playerB)) continue;
+      if (matchCount[p.playerA] >= target && matchCount[p.playerB] >= target) continue;
+      inRound.add(p.playerA); inRound.add(p.playerB);
+      scheduled.push({ ...p, round, isBalancer: false, balancerEligiblePlayers: [] });
+      usedIndices.add(i); updateCounts(p); addedInRound = true;
+    }
+    if (!addedInRound) break;
+    round++;
+  }
+  let safetyLimit = 200;
+  while (safetyLimit-- > 0) {
+    if (playerIds.every((p) => matchCount[p] >= target)) break;
+    const needMore = playerIds.filter((p) => matchCount[p] < target);
+    if (needMore.length === 0) break;
+    const bothNeed = allPairs.map((p, i) => ({ p, i, score: scorePair(p) }))
+      .filter(({ p }) => needMore.includes(p.playerA) && needMore.includes(p.playerB))
+      .sort((a, b) => a.score - b.score);
+    const oneNeeds = allPairs.map((p, i) => ({ p, i, score: scorePair(p) }))
+      .filter(({ p }) => needMore.includes(p.playerA) || needMore.includes(p.playerB))
+      .sort((a, b) => a.score - b.score);
+    const chosen = (bothNeed.length > 0 ? bothNeed : oneNeeds)[0];
+    if (!chosen) break;
+    const maxCount = Math.max(...(Object.values(matchCount) as number[]));
+    const minCount = Math.min(...(Object.values(matchCount) as number[]));
+    const isBalancer = maxCount > minCount;
+    const eligiblePlayers = isBalancer ? [chosen.p.playerA, chosen.p.playerB].filter((p) => matchCount[p] < maxCount) : [];
+    scheduled.push({ ...chosen.p, round, isBalancer, balancerEligiblePlayers: eligiblePlayers });
+    updateCounts(chosen.p); round++;
+  }
+  return scheduled;
+}
+
 /**
  * Get all fixtures for a box, with player display names resolved.
  */
@@ -1403,9 +1609,9 @@ export async function getFixturesByBox(boxId: number) {
   const allUserIds = new Set<number>();
   for (const f of rows) {
     allUserIds.add(f.teamAPlayer1);
-    allUserIds.add(f.teamAPlayer2);
+    if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
     allUserIds.add(f.teamBPlayer1);
-    allUserIds.add(f.teamBPlayer2);
+    if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
   }
 
   const userRows = await db
@@ -1418,9 +1624,9 @@ export async function getFixturesByBox(boxId: number) {
   return rows.map((f) => ({
     ...f,
     teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
     teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+    teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
   }));
 }
 
@@ -1451,9 +1657,9 @@ export async function getMyFixtures(userId: number, seasonId: number) {
   const allUserIds = new Set<number>();
   for (const f of rows) {
     allUserIds.add(f.teamAPlayer1);
-    allUserIds.add(f.teamAPlayer2);
+    if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
     allUserIds.add(f.teamBPlayer1);
-    allUserIds.add(f.teamBPlayer2);
+    if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
   }
 
   const userRows = await db
@@ -1466,9 +1672,9 @@ export async function getMyFixtures(userId: number, seasonId: number) {
   return rows.map((f) => ({
     ...f,
     teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-    teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+    teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
     teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-    teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+    teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
   }));
 }
 
@@ -1530,22 +1736,16 @@ export async function endSeason(seasonId: number): Promise<{
       .leftJoin(seasonEntrants, eq(boxMembers.seasonEntrantId, seasonEntrants.id))
       .where(eq(boxMembers.boxId, box.id));
 
-    // Sort by: seasonPoints desc, matchesWon desc, gamesDiff desc, matchesPlayed asc
+    // Sort by: seasonPoints desc, then game differential (gamesWon - gamesLost) desc
     const ranked = members
       .filter((m) => m.userId !== null)
       .sort((a, b) => {
         const aPts = a.seasonPoints ?? 0;
         const bPts = b.seasonPoints ?? 0;
-        const aWon = a.matchesWon ?? 0;
-        const bWon = b.matchesWon ?? 0;
         const aDiff = (a.gamesWon ?? 0) - (a.gamesLost ?? 0);
         const bDiff = (b.gamesWon ?? 0) - (b.gamesLost ?? 0);
-        const aPlayed = a.matchesPlayed ?? 0;
-        const bPlayed = b.matchesPlayed ?? 0;
         if (bPts !== aPts) return bPts - aPts;
-        if (bWon !== aWon) return bWon - aWon;
-        if (bDiff !== aDiff) return bDiff - aDiff;
-        return aPlayed - bPlayed;
+        return bDiff - aDiff;
       });
 
     const boxOutcomes: typeof summary[0]["outcomes"] = [];
@@ -1630,18 +1830,18 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
       round: number;
       status: string;
       teamAPlayer1: number;
-      teamAPlayer2: number;
+      teamAPlayer2: number | null;
       teamBPlayer1: number;
-      teamBPlayer2: number;
+      teamBPlayer2: number | null;
       teamAPlayer1Name: string;
-      teamAPlayer2Name: string;
+      teamAPlayer2Name: string | null;
       teamBPlayer1Name: string;
-      teamBPlayer2Name: string;
+      teamBPlayer2Name: string | null;
       // entrant IDs (needed for reportMatch)
       teamAEntrant1: number;
-      teamAEntrant2: number;
+      teamAEntrant2: number | null;
       teamBEntrant1: number;
-      teamBEntrant2: number;
+      teamBEntrant2: number | null;
       /** True if this is a balancer fixture — 0 points awarded */
       isBalancer: boolean;
     }[];
@@ -1675,9 +1875,9 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
     const allUserIds = new Set<number>();
     for (const f of rows) {
       allUserIds.add(f.teamAPlayer1);
-      allUserIds.add(f.teamAPlayer2);
+      if (f.teamAPlayer2 != null) allUserIds.add(f.teamAPlayer2);
       allUserIds.add(f.teamBPlayer1);
-      allUserIds.add(f.teamBPlayer2);
+      if (f.teamBPlayer2 != null) allUserIds.add(f.teamBPlayer2);
     }
 
     const userRows = await db
@@ -1712,13 +1912,13 @@ export async function getAllFixturesBySeason(seasonId: number): Promise<
         teamBPlayer1: f.teamBPlayer1,
         teamBPlayer2: f.teamBPlayer2,
         teamAPlayer1Name: nameMap.get(f.teamAPlayer1) ?? "Unknown",
-        teamAPlayer2Name: nameMap.get(f.teamAPlayer2) ?? "Unknown",
+        teamAPlayer2Name: f.teamAPlayer2 != null ? (nameMap.get(f.teamAPlayer2) ?? "Unknown") : null,
         teamBPlayer1Name: nameMap.get(f.teamBPlayer1) ?? "Unknown",
-        teamBPlayer2Name: nameMap.get(f.teamBPlayer2) ?? "Unknown",
+        teamBPlayer2Name: f.teamBPlayer2 != null ? (nameMap.get(f.teamBPlayer2) ?? "Unknown") : null,
         teamAEntrant1: entrantMap.get(f.teamAPlayer1) ?? 0,
-        teamAEntrant2: entrantMap.get(f.teamAPlayer2) ?? 0,
+        teamAEntrant2: f.teamAPlayer2 != null ? (entrantMap.get(f.teamAPlayer2) ?? 0) : null,
         teamBEntrant1: entrantMap.get(f.teamBPlayer1) ?? 0,
-        teamBEntrant2: entrantMap.get(f.teamBPlayer2) ?? 0,
+        teamBEntrant2: f.teamBPlayer2 != null ? (entrantMap.get(f.teamBPlayer2) ?? 0) : null,
         isBalancer: f.isBalancer,
       })),
     });
@@ -1793,7 +1993,7 @@ export async function getFixtureBalanceSummary(seasonId: number): Promise<
   // Count appearances per player
   const countMap: Record<number, { total: number; balancer: number }> = {};
   for (const f of allFixtures) {
-    const players = [f.teamAPlayer1, f.teamAPlayer2, f.teamBPlayer1, f.teamBPlayer2];
+    const players = [f.teamAPlayer1, f.teamAPlayer2, f.teamBPlayer1, f.teamBPlayer2].filter((id): id is number => id != null);
     for (const pid of players) {
       if (!countMap[pid]) countMap[pid] = { total: 0, balancer: 0 };
       countMap[pid].total++;
@@ -1852,22 +2052,30 @@ export async function buildFixtureScheduleSummary(seasonId: number): Promise<
 
   for (const box of allBoxes) {
     for (const f of box.fixtures) {
-      const teams: [number, number, string, string, string, string][] = [
-        // [playerId, partnerId, partnerName, opp1, opp2, isBalancer]
-        [f.teamAPlayer1, f.teamAPlayer2, f.teamAPlayer2Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
-        [f.teamAPlayer2, f.teamAPlayer1, f.teamAPlayer1Name, f.teamBPlayer1Name, f.teamBPlayer2Name, String(f.isBalancer)],
-        [f.teamBPlayer1, f.teamBPlayer2, f.teamBPlayer2Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
-        [f.teamBPlayer2, f.teamBPlayer1, f.teamBPlayer1Name, f.teamAPlayer1Name, f.teamAPlayer2Name, String(f.isBalancer)],
-      ];
+      // Build per-player entries — singles fixtures have null for player2 slots
+      const isSingles = f.teamAPlayer2 == null;
+      const isBalStr = String(f.isBalancer);
 
-      for (const [pid, , partnerName, opp1, opp2, isBalStr] of teams) {
+      const teams: [number, string | null, string, string][] = isSingles
+        ? [
+            [f.teamAPlayer1, null, f.teamBPlayer1Name, isBalStr],
+            [f.teamBPlayer1, null, f.teamAPlayer1Name, isBalStr],
+          ]
+        : [
+            [f.teamAPlayer1, f.teamAPlayer2Name, `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name ?? ''}`, isBalStr],
+            [f.teamAPlayer2!, f.teamAPlayer1Name, `${f.teamBPlayer1Name} & ${f.teamBPlayer2Name ?? ''}`, isBalStr],
+            [f.teamBPlayer1, f.teamBPlayer2Name, `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name ?? ''}`, isBalStr],
+            [f.teamBPlayer2!, f.teamBPlayer1Name, `${f.teamAPlayer1Name} & ${f.teamAPlayer2Name ?? ''}`, isBalStr],
+          ];
+
+      for (const [pid, partnerName, opponents, isBalStrEntry] of teams) {
         if (!playerMap[pid]) {
           // Determine player name from the fixture
           const names: Record<number, string> = {
             [f.teamAPlayer1]: f.teamAPlayer1Name,
-            [f.teamAPlayer2]: f.teamAPlayer2Name,
             [f.teamBPlayer1]: f.teamBPlayer1Name,
-            [f.teamBPlayer2]: f.teamBPlayer2Name,
+            ...(f.teamAPlayer2 != null ? { [f.teamAPlayer2]: f.teamAPlayer2Name ?? 'Unknown' } : {}),
+            ...(f.teamBPlayer2 != null ? { [f.teamBPlayer2]: f.teamBPlayer2Name ?? 'Unknown' } : {}),
           };
           playerMap[pid] = {
             playerId: pid,
@@ -1878,9 +2086,9 @@ export async function buildFixtureScheduleSummary(seasonId: number): Promise<
         }
         playerMap[pid].fixtures.push({
           round: f.round,
-          partner: partnerName,
-          opponents: `${opp1} & ${opp2}`,
-          isBalancer: isBalStr === "true",
+          partner: partnerName ?? 'Singles',
+          opponents,
+          isBalancer: isBalStrEntry === "true",
         });
       }
     }
@@ -1954,11 +2162,11 @@ export async function removePlayerFromSeason(
 
   for (const m of playerMatches) {
     const otherPlayers = [m.player1Id, m.partner1Id, m.player2Id, m.partner2Id].filter(
-      (pid) => pid !== userId
+      (pid): pid is number => pid != null && pid !== userId
     );
 
     // Reverse year_points for the removed player for this match
-    const onTeamA = m.player1Id === userId || m.partner1Id === userId;
+    const onTeamA = m.player1Id === userId || (m.partner1Id != null && m.partner1Id === userId);
     const playerWon = (onTeamA && m.winner === "A") || (!onTeamA && m.winner === "B");
     let playerPts = 0;
     if (playerWon) {
@@ -1980,6 +2188,20 @@ export async function removePlayerFromSeason(
       playerPts = setsWon > 0 ? 1 : 0;
     }
 
+    // Calculate games won/lost by this player in this match
+    let playerGW = 0;
+    let playerGL = 0;
+    if (m.score) {
+      for (const set of m.score.trim().split(/\s+/)) {
+        const parts = set.split("-");
+        if (parts.length !== 2) continue;
+        const g0 = parseInt(parts[0], 10);
+        const g1 = parseInt(parts[1], 10);
+        if (isNaN(g0) || isNaN(g1)) continue;
+        playerGW += onTeamA ? g0 : g1;
+        playerGL += onTeamA ? g1 : g0;
+      }
+    }
     const existingYP = await db
       .select()
       .from(yearPoints)
@@ -1992,6 +2214,8 @@ export async function removePlayerFromSeason(
           totalPoints: Math.max(0, existingYP[0].totalPoints - playerPts),
           totalMatchesPlayed: Math.max(0, existingYP[0].totalMatchesPlayed - 1),
           totalMatchesWon: Math.max(0, existingYP[0].totalMatchesWon - (playerWon ? 1 : 0)),
+          totalGamesWon: Math.max(0, existingYP[0].totalGamesWon - playerGW),
+          totalGamesLost: Math.max(0, existingYP[0].totalGamesLost - playerGL),
         })
         .where(eq(yearPoints.id, existingYP[0].id));
     }
@@ -2015,9 +2239,9 @@ export async function removePlayerFromSeason(
             x.partner2Id === pid) &&
           // Exclude matches that are about to be deleted (those involving the removed player)
           x.player1Id !== userId &&
-          x.partner1Id !== userId &&
+          (x.partner1Id == null || x.partner1Id !== userId) &&
           x.player2Id !== userId &&
-          x.partner2Id !== userId
+          (x.partner2Id == null || x.partner2Id !== userId)
       );
 
       let pts = 0;
@@ -2271,20 +2495,24 @@ export async function updateBoxWhatsappLink(boxId: number, whatsappLink: string 
  * @param division  "mens" | "ladies"
  * @returns The number of rows deleted
  */
-export async function resetYearAccumulator(year: number, division: "mens" | "ladies"): Promise<number> {
+export async function resetYearAccumulator(year: number, division: "mens" | "ladies", format?: "doubles" | "singles"): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(yearPoints.year, year), eq(yearPoints.division, division)];
+  if (format) conditions.push(eq(yearPoints.format, format));
+  const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
 
   const existing = await db
     .select({ id: yearPoints.id })
     .from(yearPoints)
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+    .where(whereClause);
 
   if (existing.length === 0) return 0;
 
   await db
     .delete(yearPoints)
-    .where(and(eq(yearPoints.year, year), eq(yearPoints.division, division)));
+    .where(whereClause);
 
   return existing.length;
 }
