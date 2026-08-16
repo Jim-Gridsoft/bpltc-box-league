@@ -12,6 +12,7 @@ import {
 export default function Admin() {
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null);
+  const [completedResultsSeasonId, setCompletedResultsSeasonId] = useState<number | null>(null);
   const [expandedEntrant, setExpandedEntrant] = useState<number | null>(null);
   // activeTab is now declared above with boxes included
   const [seedCount, setSeedCount] = useState(6);
@@ -59,6 +60,16 @@ export default function Admin() {
   const { data: boxes } = trpc.tournament.seasonBoxes.useQuery(
     { seasonId: activeSeason?.id ?? 0 },
     { enabled: !!activeSeason && user?.role === "admin" }
+  );
+
+  // A completed season is not the "current" season, so its final table needs
+  // its own selector rather than relying on the main active-season state.
+  const completedSeasons = (seasons ?? []).filter((season) => season.status === "completed");
+  const completedResultsSeason = completedSeasons.find((season) => season.id === completedResultsSeasonId)
+    ?? completedSeasons[0];
+  const { data: completedSeasonLeaderboard, isLoading: completedSeasonLeaderboardLoading } = trpc.tournament.seasonLeaderboard.useQuery(
+    { seasonId: completedResultsSeason?.id ?? 0 },
+    { enabled: !!completedResultsSeason && user?.role === "admin" }
   );
 
   const markPaidMutation = trpc.tournament.adminMarkPaid.useMutation({
@@ -742,6 +753,77 @@ export default function Admin() {
                 {createSeasonMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
                 Create Season
               </button>
+            </div>
+
+            {/* Completed season results — deliberately separate from the current-season selector */}
+            <div id="completed-season-results" className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-[#c9a84c]" />
+                  <h2 className="font-serif text-xl font-bold text-[#1b4332]">Completed Season Results</h2>
+                </div>
+                <p className="text-sm text-gray-500 mt-1">Choose a completed season to view its final overall standings.</p>
+              </div>
+              {completedSeasons.length === 0 ? (
+                <div className="p-6 text-sm text-gray-400">There are no completed seasons yet.</div>
+              ) : (
+                <>
+                  <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap gap-2">
+                    {completedSeasons.map((season) => {
+                      const selected = completedResultsSeason?.id === season.id;
+                      const isLadies = season.division === "ladies";
+                      return (
+                        <button
+                          key={season.id}
+                          onClick={() => setCompletedResultsSeasonId(season.id)}
+                          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                            selected
+                              ? isLadies ? "bg-pink-600 text-white" : "bg-[#1b4332] text-white"
+                              : isLadies ? "bg-pink-50 text-pink-700 border border-pink-200 hover:bg-pink-100" : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                          }`}
+                        >
+                          {isLadies ? "Ladies'" : "Men's"} — {season.name.replace(/^(Men's|Ladies')\s*/i, "")}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {completedSeasonLeaderboardLoading ? (
+                    <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-[#1b4332] mx-auto" /></div>
+                  ) : !completedSeasonLeaderboard || completedSeasonLeaderboard.length === 0 ? (
+                    <div className="p-6 text-sm text-gray-400">No final standings are available for this season.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
+                          <tr>
+                            <th className="px-6 py-3 text-left">#</th>
+                            <th className="px-6 py-3 text-left">Player</th>
+                            <th className="px-6 py-3 text-center">Pts</th>
+                            <th className="px-6 py-3 text-center hidden sm:table-cell">Played</th>
+                            <th className="px-6 py-3 text-center hidden sm:table-cell">Won</th>
+                            <th className="px-6 py-3 text-center" title="Games Differential (Won − Lost)">GD</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                          {completedSeasonLeaderboard.map((player, index) => {
+                            const gameDifferential = ((player as any).gamesWon ?? 0) - ((player as any).gamesLost ?? 0);
+                            return (
+                              <tr key={player.id} className={index < 3 ? "bg-amber-50/40" : ""}>
+                                <td className="px-6 py-3 font-semibold text-gray-600">{index + 1}</td>
+                                <td className="px-6 py-3 font-medium text-gray-800">{player.displayName}</td>
+                                <td className="px-6 py-3 text-center font-bold text-[#1b4332]">{player.seasonPoints}</td>
+                                <td className="px-6 py-3 text-center text-gray-600 hidden sm:table-cell">{player.matchesPlayed}</td>
+                                <td className="px-6 py-3 text-center text-gray-600 hidden sm:table-cell">{player.matchesWon}</td>
+                                <td className="px-6 py-3 text-center text-gray-600">{gameDifferential > 0 ? `+${gameDifferential}` : gameDifferential}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
