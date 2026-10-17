@@ -155,6 +155,15 @@ export default function Admin() {
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
+  const generateBoxFixturesMutation = trpc.tournament.adminGenerateBoxFixtures.useMutation({
+    onSuccess: (data, variables) => {
+      toast.success(`${data.totalFixtures} fixtures regenerated for this box only.`);
+      utils.tournament.boxFixtures.invalidate({ boxId: variables.boxId });
+      utils.tournament.fixtureBalanceSummary.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
   const sandboxResetMutation = trpc.tournament.sandboxReset.useMutation({
     onSuccess: () => {
       toast.success("Sandbox data reset. All test players removed.");
@@ -654,9 +663,18 @@ export default function Admin() {
                   <h2 className="font-serif text-xl font-bold text-[#1b4332]">Box Fixture Schedules</h2>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {boxes.map((box) => (
-                    <BoxFixtureRow key={box.id} box={box} />
-                  ))}
+                      {boxes.map((box) => (
+                        <BoxFixtureRow
+                          key={box.id}
+                          box={box}
+                          onRegenerate={() => {
+                            if (window.confirm(`Regenerate fixtures for ${box.name} only? Existing scheduled fixtures in this box will be replaced. Other boxes and recorded results are not changed.`)) {
+                              generateBoxFixturesMutation.mutate({ seasonId: activeSeason?.id ?? 0, boxId: box.id });
+                            }
+                          }}
+                          regenerating={generateBoxFixturesMutation.isPending}
+                        />
+                      ))}
                 </div>
               </div>
             )}
@@ -1507,15 +1525,33 @@ function CompletedBoxFinalStandings({ box }: { box: { id: number; name: string; 
   );
 }
 
-function BoxFixtureRow({ box }: { box: { id: number; name: string } }) {
+function BoxFixtureRow({
+  box,
+  onRegenerate,
+  regenerating,
+}: {
+  box: { id: number; name: string };
+  onRegenerate: () => void;
+  regenerating: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
   const { data: fixtures } = trpc.tournament.boxFixtures.useQuery({ boxId: box.id }, { enabled: expanded });
 
   return (
     <div>
-      <div className="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50" onClick={() => setExpanded(!expanded)}>
-        <p className="font-medium text-gray-800">{box.name}</p>
-        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+      <div className="px-6 py-4 flex items-center justify-between gap-3 hover:bg-gray-50">
+        <button className="flex-1 flex items-center justify-between text-left cursor-pointer" onClick={() => setExpanded(!expanded)}>
+          <p className="font-medium text-gray-800">{box.name}</p>
+          {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+        </button>
+        <button
+          onClick={onRegenerate}
+          disabled={regenerating}
+          className="text-xs font-semibold text-[#1b4332] border border-[#1b4332] rounded-lg px-3 py-1.5 hover:bg-green-50 disabled:opacity-50 flex items-center gap-1 shrink-0"
+          title={`Regenerate ${box.name} fixtures only`}>
+          {regenerating && <Loader2 className="w-3 h-3 animate-spin" />}
+          Regenerate this box only
+        </button>
       </div>
       {expanded && (
         <div className="px-6 pb-4 bg-gray-50 border-t border-gray-100">

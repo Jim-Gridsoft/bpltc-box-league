@@ -1204,7 +1204,7 @@ export async function autoCreateBoxes(
  *
  * Result: every player plays the same number of matches regardless of box size.
  */
-export async function generateFixtures(seasonId: number): Promise<{ totalFixtures: number; boxCount: number }> {
+export async function generateFixtures(seasonId: number, onlyBoxId?: number): Promise<{ totalFixtures: number; boxCount: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -1216,7 +1216,9 @@ export async function generateFixtures(seasonId: number): Promise<{ totalFixture
   const seasonBoxes = await db
     .select()
     .from(boxes)
-    .where(eq(boxes.seasonId, seasonId));
+    .where(onlyBoxId
+      ? and(eq(boxes.seasonId, seasonId), eq(boxes.id, onlyBoxId))
+      : eq(boxes.seasonId, seasonId));
 
   if (seasonBoxes.length === 0) {
     throw new Error("No boxes found for this season. Create boxes first.");

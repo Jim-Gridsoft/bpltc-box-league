@@ -603,6 +603,15 @@ export const tournamentRouter = router({
       return result;
     }),
 
+  /** Generate or replace fixtures for one box only. */
+  adminGenerateBoxFixtures: protectedProcedure
+    .input(z.object({ seasonId: z.number(), boxId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const result = await generateFixtures(input.seasonId, input.boxId);
+      return result;
+    }),
+
   /** Get all fixtures for a specific box (public) */
   boxFixtures: publicProcedure
     .input(z.object({ boxId: z.number() }))
