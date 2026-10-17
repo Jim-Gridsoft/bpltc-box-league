@@ -315,7 +315,9 @@ export async function getAllSeasonEntrants(seasonId: number) {
     .from(seasonEntrants)
     .leftJoin(users, eq(seasonEntrants.userId, users.id))
     .where(eq(seasonEntrants.seasonId, seasonId))
-    .orderBy(desc(seasonEntrants.seasonPoints), desc(sql`${seasonEntrants.gamesWon} - ${seasonEntrants.gamesLost}`));
+    // The Entrants tab is the committee's source of truth for box seeding.
+    // Show the saved seeding rating first so edits are visible in ranking order.
+    .orderBy(desc(seasonEntrants.abilityRating), asc(seasonEntrants.displayName), asc(seasonEntrants.id));
 }
 
 // ── Year Points ───────────────────────────────────────────────────────────────
@@ -1119,12 +1121,14 @@ export async function autoCreateBoxes(
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Get all paid entrants for the season, sorted by ability (best first)
+  // Get all paid entrants for the season, sorted by the currently saved
+  // committee seeding rating (best first). Name/id provide a stable order when
+  // players have the same rating, so reruns cannot reshuffle tied players.
   const entrants = await db
     .select()
     .from(seasonEntrants)
     .where(and(eq(seasonEntrants.seasonId, seasonId), eq(seasonEntrants.paid, true)))
-    .orderBy(desc(seasonEntrants.abilityRating));
+    .orderBy(desc(seasonEntrants.abilityRating), asc(seasonEntrants.displayName), asc(seasonEntrants.id));
 
   if (entrants.length < 2) {
     throw new Error("Need at least 2 paid entrants to create boxes.");
