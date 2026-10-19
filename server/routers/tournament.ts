@@ -11,6 +11,7 @@ import {
   getSeasonEntrantByUserId,
   getSeasonEntrantById,
   createSeasonEntrant,
+  restoreSeasonEntrantByName,
   markSeasonEntrantPaid,
   getAllSeasonEntrants,
   getYearLeaderboard,
@@ -19,6 +20,7 @@ import {
   getBoxWithMembers,
   getMyBox,
   addBoxMember,
+  moveSeasonEntrantToBox,
   setBoxMemberOutcome,
   getMatchesByBox,
   getMatchesByUser,
@@ -370,6 +372,25 @@ export const tournamentRouter = router({
     .query(async ({ ctx, input }) => {
       if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
       return getAllSeasonEntrants(input.seasonId);
+    }),
+
+  /** Restore a previously deleted user to a season as a paid entrant. */
+  adminRestoreSeasonEntrant: protectedProcedure
+    .input(z.object({ seasonId: z.number(), displayName: z.string().min(2).max(128), abilityRating: z.number().int().min(1).max(5) }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      const season = await getSeasonById(input.seasonId);
+      if (!season) throw new TRPCError({ code: "NOT_FOUND", message: "Season not found." });
+      if (season.status === "completed") throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot restore an entrant to a completed season." });
+      return restoreSeasonEntrantByName(input.seasonId, input.displayName, input.abilityRating);
+    }),
+
+  /** Move an entrant between boxes; affected schedules are cleared for regeneration. */
+  adminMoveEntrantToBox: protectedProcedure
+    .input(z.object({ seasonEntrantId: z.number(), targetBoxId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+      return moveSeasonEntrantToBox(input.seasonEntrantId, input.targetBoxId);
     }),
 
   /** Manually mark an entrant as paid */

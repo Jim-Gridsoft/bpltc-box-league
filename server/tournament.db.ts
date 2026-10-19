@@ -281,6 +281,29 @@ export async function createSeasonEntrant(data: InsertSeasonEntrant) {
   return rows[0];
 }
 
+/** Restore an existing user to a season as a paid entrant. */
+export async function restoreSeasonEntrantByName(seasonId: number, displayName: string, abilityRating: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const normalizedName = displayName.trim();
+  if (!normalizedName) throw new Error("A player name is required.");
+  const matchingUsers = await db.select().from(users)
+    .where(sql`LOWER(${users.name}) = LOWER(${normalizedName})`).limit(2);
+  if (matchingUsers.length === 0) throw new Error(`No existing user account found for ${normalizedName}.`);
+  if (matchingUsers.length > 1) throw new Error(`More than one user account matches ${normalizedName}. Use a unique name.`);
+  const user = matchingUsers[0];
+  const existing = await getSeasonEntrantByUserId(user.id, seasonId);
+  if (existing) throw new Error(`${existing.displayName} is already registered for this season.`);
+  await db.insert(seasonEntrants).values({
+    seasonId, userId: user.id, displayName: user.name ?? normalizedName, abilityRating,
+    paid: true, stripePaymentIntentId: "admin-restored", seasonPoints: 0,
+    matchesPlayed: 0, matchesWon: 0, gamesWon: 0, gamesLost: 0, shareContact: false,
+  });
+  const restored = await getSeasonEntrantByUserId(user.id, seasonId);
+  if (!restored) throw new Error("The entrant could not be restored.");
+  return restored;
+}
+
 export async function markSeasonEntrantPaid(entrantId: number, stripePaymentIntentId: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -455,6 +478,26 @@ export async function addBoxMember(data: InsertBoxMember) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.insert(boxMembers).values(data);
+}
+
+/** Move an entrant to another box and clear fixtures for both affected boxes. */
+export async function moveSeasonEntrantToBox(seasonEntrantId: number, targetBoxId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const entrant = (await db.select().from(seasonEntrants).where(eq(seasonEntrants.id, seasonEntrantId)).limit(1))[0];
+  if (!entrant) throw new Error("Season entrant not found.");
+  const targetBox = (await db.select().from(boxes).where(eq(boxes.id, targetBoxId)).limit(1))[0];
+  if (!targetBox) throw new Error("Target box not found.");
+  if (targetBox.seasonId !== entrant.seasonId) throw new Error("The target box belongs to a different season.");
+  const current = (await db.select().from(boxMembers).where(eq(boxMembers.seasonEntrantId, seasonEntrantId)).limit(1))[0];
+  if (current?.boxId === targetBoxId) {
+    return { displayName: entrant.displayName, fromBoxId: current.boxId, toBoxId: targetBoxId, clearedBoxIds: [] as number[] };
+  }
+  const affectedBoxIds = Array.from(new Set([current?.boxId, targetBoxId].filter((id): id is number => id != null)));
+  for (const boxId of affectedBoxIds) await db.delete(fixtures).where(eq(fixtures.boxId, boxId));
+  if (current) await db.delete(boxMembers).where(eq(boxMembers.id, current.id));
+  await db.insert(boxMembers).values({ boxId: targetBoxId, seasonEntrantId });
+  return { displayName: entrant.displayName, fromBoxId: current?.boxId ?? null, toBoxId: targetBoxId, clearedBoxIds: affectedBoxIds };
 }
 
 export async function setBoxMemberOutcome(

@@ -19,6 +19,8 @@ export default function Admin() {
   const [targetBoxSize, setTargetBoxSize] = useState(6);
   const [activeTab, setActiveTab] = useState<"entrants" | "boxes" | "matches" | "seasons" | "admins" | "disputes" | "sandbox">("entrants");
   const [userSearch, setUserSearch] = useState("");
+  const [restoreName, setRestoreName] = useState("");
+  const [restoreRating, setRestoreRating] = useState(3);
   const [confirmRevokeId, setConfirmRevokeId] = useState<number | null>(null);
   const [confirmPromoteId, setConfirmPromoteId] = useState<number | null>(null);
 
@@ -79,6 +81,15 @@ export default function Admin() {
 
   const markPaidMutation = trpc.tournament.adminMarkPaid.useMutation({
     onSuccess: () => { toast.success("Marked as paid."); utils.tournament.adminSeasonEntrants.invalidate(); },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const restoreEntrantMutation = trpc.tournament.adminRestoreSeasonEntrant.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.displayName} restored as a paid entrant.`);
+      setRestoreName("");
+      utils.tournament.adminSeasonEntrants.invalidate();
+    },
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
@@ -159,6 +170,16 @@ export default function Admin() {
     onSuccess: (data, variables) => {
       toast.success(`${data.totalFixtures} fixtures regenerated for this box only.`);
       utils.tournament.boxFixtures.invalidate({ boxId: variables.boxId });
+      utils.tournament.fixtureBalanceSummary.invalidate();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const moveEntrantMutation = trpc.tournament.adminMoveEntrantToBox.useMutation({
+    onSuccess: (data) => {
+      const affected = data.clearedBoxIds.length;
+      toast.success(`${data.displayName} moved to the target box. Regenerate the ${affected} affected box schedule${affected === 1 ? "" : "s"}.`);
+      utils.tournament.seasonBoxes.invalidate();
       utils.tournament.fixtureBalanceSummary.invalidate();
     },
     onError: (e: { message: string }) => toast.error(e.message),
@@ -344,7 +365,26 @@ export default function Admin() {
 
         {/* Entrants tab */}
         {activeTab === "entrants" && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-amber-100 p-6">
+              <h2 className="font-serif text-xl font-bold text-[#1b4332]">Restore Existing Entrant</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Re-add a previously removed user account as a paid entrant. This does not issue or collect a payment.</p>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="text-sm text-gray-600">Exact account name
+                  <input value={restoreName} onChange={(e) => setRestoreName(e.target.value)} placeholder="e.g. Junko Ito" className="mt-1 block border border-gray-200 rounded-lg px-3 py-2 text-sm w-56" />
+                </label>
+                <label className="text-sm text-gray-600">Seeding rating
+                  <select value={restoreRating} onChange={(e) => setRestoreRating(Number(e.target.value))} className="mt-1 block border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating}/5</option>)}
+                  </select>
+                </label>
+                <button onClick={() => activeSeason && restoreEntrantMutation.mutate({ seasonId: activeSeason.id, displayName: restoreName, abilityRating: restoreRating })}
+                  disabled={!activeSeason || !restoreName.trim() || restoreEntrantMutation.isPending} className="bg-[#1b4332] text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 flex items-center gap-2">
+                  {restoreEntrantMutation.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Restore as Paid
+                </button>
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
               <Users className="w-5 h-5 text-[#c9a84c]" />
               <h2 className="font-serif text-xl font-bold text-[#1b4332]">Season Entrants</h2>
@@ -422,6 +462,23 @@ export default function Admin() {
                             )}
                           </div>
                           <div className="ml-auto flex items-center gap-2 flex-wrap">
+                            {boxes && boxes.length > 0 && (
+                              <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">Move to:</span>
+                                <select id={`move-box-${e.id}`} className="border border-gray-200 rounded px-2 py-1 text-xs">
+                                  {boxes.map((box) => <option key={box.id} value={box.id}>{box.name}</option>)}
+                                </select>
+                                <button onClick={(ev) => {
+                                  ev.stopPropagation();
+                                  const select = document.getElementById(`move-box-${e.id}`) as HTMLSelectElement | null;
+                                  const targetBoxId = Number(select?.value ?? 0);
+                                  if (targetBoxId && window.confirm(`Move ${e.displayName} to the selected box? Existing fixtures for the affected boxes will be cleared.`)) {
+                                    moveEntrantMutation.mutate({ seasonEntrantId: e.id, targetBoxId });
+                                  }
+                                }} disabled={moveEntrantMutation.isPending}
+                                  className="bg-[#c9a84c] text-white px-2 py-1 rounded text-xs font-semibold disabled:opacity-50">Move</button>
+                              </div>
+                            )}
                             {!e.paid && (
                               <button
                                 onClick={() => markPaidMutation.mutate({ entrantId: e.id })}
@@ -445,6 +502,7 @@ export default function Admin() {
                 ))}
               </div>
             )}
+          </div>
           </div>
         )}
 
