@@ -287,21 +287,25 @@ export async function restoreSeasonEntrantByName(seasonId: number, displayName: 
   if (!db) throw new Error("Database not available");
   const normalizedName = displayName.trim();
   if (!normalizedName) throw new Error("A player name is required.");
-  const matchingUsers = await db.select().from(users)
-    .where(sql`LOWER(${users.name}) = LOWER(${normalizedName})`).limit(2);
-  if (matchingUsers.length === 0) throw new Error(`No existing user account found for ${normalizedName}.`);
-  if (matchingUsers.length > 1) throw new Error(`More than one user account matches ${normalizedName}. Use a unique name.`);
-  const user = matchingUsers[0];
-  const existing = await getSeasonEntrantByUserId(user.id, seasonId);
-  if (existing) throw new Error(`${existing.displayName} is already registered for this season.`);
-  await db.insert(seasonEntrants).values({
-    seasonId, userId: user.id, displayName: user.name ?? normalizedName, abilityRating,
-    paid: true, stripePaymentIntentId: "admin-restored", seasonPoints: 0,
-    matchesPlayed: 0, matchesWon: 0, gamesWon: 0, gamesLost: 0, shareContact: false,
+  return db.transaction(async (tx) => {
+    const season = (await tx.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1).for("update"))[0];
+    if (!season || season.status === "completed") throw new Error("Cannot restore an entrant to a missing or completed season.");
+    const matchingUsers = await tx.select().from(users)
+      .where(sql`LOWER(${users.name}) = LOWER(${normalizedName})`).limit(2);
+    if (matchingUsers.length === 0) throw new Error(`No existing user account found for ${normalizedName}.`);
+    if (matchingUsers.length > 1) throw new Error(`More than one user account matches ${normalizedName}. Use a unique name.`);
+    const user = matchingUsers[0];
+    const existing = (await tx.select().from(seasonEntrants).where(and(eq(seasonEntrants.userId, user.id), eq(seasonEntrants.seasonId, seasonId))).limit(1))[0];
+    if (existing) throw new Error(`${existing.displayName} is already registered for this season.`);
+    await tx.insert(seasonEntrants).values({
+      seasonId, userId: user.id, displayName: user.name ?? normalizedName, abilityRating,
+      paid: true, stripePaymentIntentId: "admin-restored", seasonPoints: 0,
+      matchesPlayed: 0, matchesWon: 0, gamesWon: 0, gamesLost: 0, shareContact: false,
+    });
+    const restored = (await tx.select().from(seasonEntrants).where(and(eq(seasonEntrants.userId, user.id), eq(seasonEntrants.seasonId, seasonId))).limit(1))[0];
+    if (!restored) throw new Error("The entrant could not be restored.");
+    return restored;
   });
-  const restored = await getSeasonEntrantByUserId(user.id, seasonId);
-  if (!restored) throw new Error("The entrant could not be restored.");
-  return restored;
 }
 
 export async function markSeasonEntrantPaid(entrantId: number, stripePaymentIntentId: string) {
@@ -480,24 +484,43 @@ export async function addBoxMember(data: InsertBoxMember) {
   await db.insert(boxMembers).values(data);
 }
 
-/** Move an entrant to another box and clear fixtures for both affected boxes. */
+/** Atomically move an entrant, clearing only unplayed schedules in affected boxes. */
 export async function moveSeasonEntrantToBox(seasonEntrantId: number, targetBoxId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const entrant = (await db.select().from(seasonEntrants).where(eq(seasonEntrants.id, seasonEntrantId)).limit(1))[0];
-  if (!entrant) throw new Error("Season entrant not found.");
-  const targetBox = (await db.select().from(boxes).where(eq(boxes.id, targetBoxId)).limit(1))[0];
-  if (!targetBox) throw new Error("Target box not found.");
-  if (targetBox.seasonId !== entrant.seasonId) throw new Error("The target box belongs to a different season.");
-  const current = (await db.select().from(boxMembers).where(eq(boxMembers.seasonEntrantId, seasonEntrantId)).limit(1))[0];
-  if (current?.boxId === targetBoxId) {
-    return { displayName: entrant.displayName, fromBoxId: current.boxId, toBoxId: targetBoxId, clearedBoxIds: [] as number[] };
-  }
-  const affectedBoxIds = Array.from(new Set([current?.boxId, targetBoxId].filter((id): id is number => id != null)));
-  for (const boxId of affectedBoxIds) await db.delete(fixtures).where(eq(fixtures.boxId, boxId));
-  if (current) await db.delete(boxMembers).where(eq(boxMembers.id, current.id));
-  await db.insert(boxMembers).values({ boxId: targetBoxId, seasonEntrantId });
-  return { displayName: entrant.displayName, fromBoxId: current?.boxId ?? null, toBoxId: targetBoxId, clearedBoxIds: affectedBoxIds };
+  return db.transaction(async (tx) => {
+    const initial = (await tx.select().from(seasonEntrants).where(eq(seasonEntrants.id, seasonEntrantId)).limit(1))[0];
+    if (!initial) throw new Error("Season entrant not found.");
+    // Serialize restoration and membership changes within this season.
+    const season = (await tx.select().from(seasons).where(eq(seasons.id, initial.seasonId)).limit(1).for("update"))[0];
+    if (!season || season.status === "completed") throw new Error("Cannot change box membership in a missing or completed season.");
+    const entrant = (await tx.select().from(seasonEntrants).where(eq(seasonEntrants.id, seasonEntrantId)).limit(1).for("update"))[0];
+    if (!entrant || !entrant.paid) throw new Error("Only paid season entrants can be assigned to a box.");
+    const targetBox = (await tx.select().from(boxes).where(eq(boxes.id, targetBoxId)).limit(1))[0];
+    if (!targetBox) throw new Error("Target box not found.");
+    if (targetBox.seasonId !== entrant.seasonId) throw new Error("The target box belongs to a different season.");
+    const memberships = await tx.select().from(boxMembers).where(eq(boxMembers.seasonEntrantId, seasonEntrantId));
+    if (memberships.length > 1) throw new Error("This entrant has duplicate box memberships; resolve them before moving.");
+    const current = memberships[0];
+    if (current?.boxId === targetBoxId) {
+      return { displayName: entrant.displayName, fromBoxId: current.boxId, toBoxId: targetBoxId, clearedBoxIds: [] as number[] };
+    }
+    const targetMembers = await tx.select().from(boxMembers).where(eq(boxMembers.boxId, targetBoxId));
+    if (targetMembers.length >= 5) throw new Error("Target box is full (maximum five players). Move another player out first.");
+    const affectedBoxIds = Array.from(new Set([current?.boxId, targetBoxId].filter((id): id is number => id != null)));
+    const recordedMatches = await tx.select({ id: matches.id }).from(matches).where(inArray(matches.boxId, affectedBoxIds)).limit(1);
+    const recordedFixtures = await tx.select({ id: fixtures.id }).from(fixtures).where(and(
+      inArray(fixtures.boxId, affectedBoxIds),
+      or(eq(fixtures.status, "played"), sql`${fixtures.matchId} IS NOT NULL`)
+    )).limit(1);
+    if (recordedMatches.length || recordedFixtures.length) {
+      throw new Error("Cannot move players because an affected box has recorded results. No membership or fixture changes were made.");
+    }
+    await tx.delete(fixtures).where(and(inArray(fixtures.boxId, affectedBoxIds), eq(fixtures.status, "scheduled"), sql`${fixtures.matchId} IS NULL`));
+    if (current) await tx.delete(boxMembers).where(eq(boxMembers.id, current.id));
+    await tx.insert(boxMembers).values({ boxId: targetBoxId, seasonEntrantId });
+    return { displayName: entrant.displayName, fromBoxId: current?.boxId ?? null, toBoxId: targetBoxId, clearedBoxIds: affectedBoxIds };
+  });
 }
 
 export async function setBoxMemberOutcome(
@@ -1255,6 +1278,17 @@ export async function generateFixtures(seasonId: number, onlyBoxId?: number): Pr
   const seasonRows = await db.select().from(seasons).where(eq(seasons.id, seasonId)).limit(1);
   const season = seasonRows[0];
   const isSingles = season?.format === "singles";
+
+  if (onlyBoxId !== undefined) {
+    if (!season || season.status === "completed") throw new Error("Cannot regenerate fixtures for a missing or completed season.");
+    const target = (await db.select().from(boxes).where(and(eq(boxes.id, onlyBoxId), eq(boxes.seasonId, seasonId))).limit(1))[0];
+    if (!target) throw new Error("The selected box does not belong to this season.");
+    const recordedMatches = await db.select({ id: matches.id }).from(matches).where(eq(matches.boxId, onlyBoxId)).limit(1);
+    const recordedFixtures = await db.select({ id: fixtures.id }).from(fixtures).where(and(
+      eq(fixtures.boxId, onlyBoxId), or(eq(fixtures.status, "played"), sql`${fixtures.matchId} IS NOT NULL`)
+    )).limit(1);
+    if (recordedMatches.length || recordedFixtures.length) throw new Error("Cannot regenerate this box because it has recorded results. Existing fixtures and results are unchanged.");
+  }
 
   const seasonBoxes = await db
     .select()

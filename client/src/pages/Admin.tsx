@@ -178,7 +178,11 @@ export default function Admin() {
   const moveEntrantMutation = trpc.tournament.adminMoveEntrantToBox.useMutation({
     onSuccess: (data) => {
       const affected = data.clearedBoxIds.length;
-      toast.success(`${data.displayName} moved to the target box. Regenerate the ${affected} affected box schedule${affected === 1 ? "" : "s"}.`);
+      toast.success(affected ? `${data.displayName} moved to the target box. Regenerate the ${affected} affected box schedule${affected === 1 ? "" : "s"}.` : `${data.displayName} is already in that box; no changes made.`);
+      data.clearedBoxIds.forEach((boxId) => utils.tournament.boxFixtures.invalidate({ boxId }));
+      utils.tournament.boxDetail.invalidate();
+      utils.tournament.myBox.invalidate();
+      utils.tournament.adminAllFixtures.invalidate();
       utils.tournament.seasonBoxes.invalidate();
       utils.tournament.fixtureBalanceSummary.invalidate();
     },
@@ -465,17 +469,18 @@ export default function Admin() {
                             {boxes && boxes.length > 0 && (
                               <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
                                 <span className="text-xs font-semibold text-gray-600 whitespace-nowrap">Move to:</span>
-                                <select id={`move-box-${e.id}`} className="border border-gray-200 rounded px-2 py-1 text-xs">
+                                <select id={`move-box-${e.id}`} aria-label={`Destination box for ${e.displayName}`} className="border border-gray-200 rounded px-2 py-1 text-xs">
                                   {boxes.map((box) => <option key={box.id} value={box.id}>{box.name}</option>)}
                                 </select>
                                 <button onClick={(ev) => {
                                   ev.stopPropagation();
                                   const select = document.getElementById(`move-box-${e.id}`) as HTMLSelectElement | null;
                                   const targetBoxId = Number(select?.value ?? 0);
-                                  if (targetBoxId && window.confirm(`Move ${e.displayName} to the selected box? Existing fixtures for the affected boxes will be cleared.`)) {
+                                  const targetName = boxes.find((box) => box.id === targetBoxId)?.name;
+                                  if (targetBoxId && window.confirm(`Move ${e.displayName} to ${targetName} in ${activeSeason?.name}? Unplayed schedules in the source and destination boxes will be cleared; regenerate those boxes afterwards. The move is blocked if either box has recorded results. Other boxes are unchanged.`)) {
                                     moveEntrantMutation.mutate({ seasonEntrantId: e.id, targetBoxId });
                                   }
-                                }} disabled={moveEntrantMutation.isPending}
+                                }} disabled={moveEntrantMutation.isPending || !e.paid || activeSeason?.status === "completed"}
                                   className="bg-[#c9a84c] text-white px-2 py-1 rounded text-xs font-semibold disabled:opacity-50">Move</button>
                               </div>
                             )}
